@@ -8,12 +8,14 @@
     "dev": "vite --host",
     "build": "vite build",
     "preview": "vite preview --host",
-    "smoke": "node test/drive-practice.mjs"
+    "smoke": "node test/drive-practice.mjs",
+    "start": "serve -s dist --no-port-switching"
   },
   "dependencies": {
     "@snooker/sim": "*",
     "@tonconnect/ui": "^2.0.11",
-    "matter-js": "^0.20.0"
+    "matter-js": "^0.20.0",
+    "serve": "^14.2.4"
   },
   "devDependencies": {
     "vite": "^6.0.3",

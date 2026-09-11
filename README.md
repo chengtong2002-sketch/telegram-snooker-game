@@ -170,20 +170,85 @@ apply a shot twice — it returns the original outcome instead.
 
 ## Deployment (Railway)
 
-Three services from this one repo, each with its own `railway.json`:
+Three services, all built from the repo root. **Do not set a per-service Root
+Directory** — this is an npm workspaces monorepo, and pointing a service at
+`backend/` cuts it off from the root `package.json` and from `shared/sim` and
+`shared/db`, so the build fails. Instead give each service its own config file:
 
-| Service | Root | Start |
+| Service | Config-as-code path | Listens on |
 |---|---|---|
-| backend | `backend/` | `npm run migrate && npm start -w @snooker/backend` |
-| bot | `bot/` | `npm start -w @snooker/bot` |
-| game | `game/` | static build served from `game/dist` |
+| backend | `backend/railway.json` | `$PORT`, health `/api/health` |
+| bot | `bot/railway.json` | `$PORT`, health `/health` |
+| game | `game/railway.json` | `$PORT`, static `game/dist` |
 
-Add a Postgres plugin and Railway injects `DATABASE_URL`; the same migrations run
-unchanged. The bot and backend must share `DATABASE_URL` and `INTERNAL_API_KEY`.
-Set `VITE_BACKEND_URL` on the game service *before* building — Vite inlines it.
+In each service: Settings → Config-as-code → set the path above. Root Directory
+stays `/`.
 
-SQLite is fine for a demo but assumes one machine with a persistent volume. Move
-to Postgres before the bot and backend run as separate instances.
+All three bind Railway's injected `$PORT`. The bot binds it too (its notification
+listener), so its health check passes; `BOT_PORT` overrides only for local dev,
+where the backend already holds `PORT`.
+
+### Order of setup
+
+The URLs are circular — the bot needs the game's URL, the game needs the
+backend's, and the backend needs the bot's — so do it in two passes.
+
+1. **Create the project and add Postgres.** Railway injects `DATABASE_URL`; the
+   same migrations run unchanged. The backend runs them on boot.
+2. **Create all three services** from this repo, set the config paths above, and
+   let the first deploys fail or come up half-configured. What you want from
+   this pass is the three generated domains.
+3. **Set the shared variables** on *both* backend and bot — they must match, or
+   the bot cannot call the backend and no "your turn" message is ever delivered:
+
+   ```
+   DATABASE_URL     (reference the Postgres service)
+   INTERNAL_API_KEY (same string on both)
+   BOT_TOKEN        (same token on both — the backend verifies initData with it)
+   TON_NETWORK=testnet
+   ```
+
+4. **Backend only:**
+   ```
+   NODE_ENV=production
+   JWT_SECRET=<32 random bytes, hex>
+   ALLOWED_ORIGINS=https://<game-domain>
+   BOT_NOTIFY_URL=http://<bot-service>.railway.internal:<port>/internal/notify
+   ALLOW_DEV_AUTH=false
+   REWARD_PERIOD_KIND=daily
+   REWARD_BUDGET_TOKENS=1000
+   TONCONNECT_ALLOWED_DOMAINS=<game-domain>
+   ```
+   The backend refuses to boot in production if `JWT_SECRET` is unset,
+   `ALLOWED_ORIGINS` is `*`, or `ALLOW_DEV_AUTH` is on. That check is deliberate.
+
+5. **Bot only:**
+   ```
+   GAME_URL=https://<game-domain>
+   BACKEND_URL=https://<backend-domain>
+   ```
+
+6. **Game only — set these BEFORE its build**, because Vite inlines them into
+   the bundle. Changing them later needs a redeploy, not a restart:
+   ```
+   VITE_BACKEND_URL=https://<backend-domain>
+   VITE_TONCONNECT_MANIFEST_URL=https://<game-domain>/tonconnect-manifest.json
+   ```
+   Also edit `game/public/tonconnect-manifest.json` and commit it — the `url`
+   and `iconUrl` in it must be the real game domain or wallet linking is
+   rejected.
+
+7. **Redeploy the game** so the build picks up the Vite variables, then point
+   @BotFather's Mini App URL at the game domain.
+
+### Notes
+
+- SQLite is fine for a demo but assumes one machine with a persistent volume.
+  Add Postgres before the bot and backend run as separate services, which on
+  Railway they always do.
+- The bot uses long polling by default, which needs no public URL. To switch to
+  webhooks set `BOT_WEBHOOK_URL=https://<bot-domain>/telegram/<INTERNAL_API_KEY>`.
+- `ALLOW_DEV_AUTH` must be false in production. It lets anyone log in as anyone.
 
 ## Tests
 

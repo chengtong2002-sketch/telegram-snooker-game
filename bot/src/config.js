@@ -8,7 +8,10 @@ export const config = {
   gameUrl: process.env.GAME_URL ?? '',
   backendUrl: process.env.BACKEND_URL ?? 'http://localhost:8080',
   internalApiKey: process.env.INTERNAL_API_KEY ?? 'dev-internal-key',
-  notifyPort: num(process.env.BOT_PORT, 8081),
+  // Railway injects PORT per service and health-checks that port, so the bot
+  // must bind it there. BOT_PORT wins when set, which keeps local dev off the
+  // backend's port even when a shared .env defines PORT.
+  notifyPort: num(process.env.BOT_PORT ?? process.env.PORT, 8081),
   // Set to use webhooks instead of long polling (Railway can do either).
   webhookUrl: process.env.BOT_WEBHOOK_URL ?? '',
   tonNetwork: process.env.TON_NETWORK ?? 'testnet',
