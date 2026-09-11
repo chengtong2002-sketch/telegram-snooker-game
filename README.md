@@ -276,8 +276,6 @@ count twice, and a wallet proof can't be forged to redirect a payout.
   Matter.js has no continuous collision detection, so the timestep and maximum
   shot speed are chosen together to keep balls from tunnelling — see the comment
   block in `shared/sim/src/constants.js` before changing either.
-- **The TON Connect nonce store is in-process.** Move it to the database or Redis
-  before running more than one backend replica.
 - **Matchmaking is a plain FIFO queue.** No rating, no rematch, no friend
   challenge — the pool is too small for those to help yet.
 - **Best of 3 only.** Best of 5 and ranked play are deliberate fast-follows.

@@ -81,6 +81,45 @@ export async function linkWallet(userId, { address, network, publicKey }) {
 export const activeWallet = (userId) =>
   getDb()('wallets').where({ user_id: userId, active: true }).first();
 
+// --- auth challenges (TON Connect nonces) ----------------------------------
+
+/**
+ * Store a nonce for `userId`, replacing any challenge they already hold.
+ * Lives in the DB rather than process memory so it survives a restart and is
+ * visible to every replica — /wallet/challenge and /wallet/link are not
+ * guaranteed to land on the same instance.
+ */
+export async function issueChallenge(userId, { payload, ttlMs, purpose = 'ton_proof' }) {
+  const knex = getDb();
+  const expiresAt = new Date(Date.now() + ttlMs);
+  await knex('auth_challenges')
+    .insert({ user_id: userId, purpose, payload, expires_at: expiresAt })
+    .onConflict(['user_id', 'purpose'])
+    .merge({ payload, expires_at: expiresAt, created_at: knex.fn.now() });
+  return payload;
+}
+
+/**
+ * Take the nonce for `userId`, single-use: the row is deleted and only the
+ * caller whose DELETE actually removed it gets the payload back. Two concurrent
+ * /wallet/link calls therefore cannot both consume the same nonce, on either
+ * engine — no row lock or `forUpdate` needed.
+ *
+ * @returns {Promise<string|null>} the payload, or null if there was none or it expired.
+ */
+export async function consumeChallenge(userId, { purpose = 'ton_proof' } = {}) {
+  const knex = getDb();
+  const row = await knex('auth_challenges').where({ user_id: userId, purpose }).first();
+  if (!row) return null;
+  const deleted = await knex('auth_challenges').where({ id: row.id }).del();
+  if (deleted !== 1) return null;                      // someone else got there first
+  return new Date(row.expires_at).getTime() < Date.now() ? null : row.payload;
+}
+
+/** Drop challenges nobody came back for. Safe to call on any schedule. */
+export const purgeExpiredChallenges = () =>
+  getDb()('auth_challenges').where('expires_at', '<', new Date()).del();
+
 // --- leaderboard -----------------------------------------------------------
 
 /**

@@ -1,36 +1,26 @@
 import { Router } from 'express';
 import { requireAuth } from '../auth.js';
-import { linkWallet, activeWallet, getDb } from '@snooker/db';
+import { linkWallet, activeWallet, getDb, issueChallenge, consumeChallenge } from '@snooker/db';
 import { verifyTonProof, newProofPayload } from '../services/tonProof.js';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
 
 const router = Router();
 
-// Single-instance nonce store. Move to the DB or Redis before running more
-// than one backend replica.
-const payloads = new Map();
+// Nonces live in the DB (auth_challenges), not in this process: /challenge and
+// /link are separate requests and may land on different replicas.
 const PAYLOAD_TTL_MS = 10 * 60 * 1000;
-
-function issuePayload(userId) {
-  const payload = newProofPayload();
-  payloads.set(userId, { payload, expires: Date.now() + PAYLOAD_TTL_MS });
-  return payload;
-}
-
-function takePayload(userId) {
-  const entry = payloads.get(userId);
-  payloads.delete(userId);
-  if (!entry || entry.expires < Date.now()) return null;
-  return entry.payload;
-}
 
 router.use(requireAuth);
 
 /** Step 1: the Mini App asks for a nonce to embed in the TON Connect request. */
-router.get('/challenge', (req, res) => {
+router.get('/challenge', async (req, res) => {
+  const payload = await issueChallenge(req.user.id, {
+    payload: newProofPayload(),
+    ttlMs: PAYLOAD_TTL_MS,
+  });
   res.json({
-    payload: issuePayload(req.user.id),
+    payload,
     network: config.ton.network,
     manifestUrl: config.tonConnect.manifestUrl,
   });
@@ -48,7 +38,7 @@ router.get('/', async (req, res) => {
 
 /** Step 2: the wallet's signed ton_proof comes back and is verified server-side. */
 router.post('/link', async (req, res) => {
-  const expectedPayload = takePayload(req.user.id);
+  const expectedPayload = await consumeChallenge(req.user.id);
   if (!expectedPayload) {
     return res.status(400).json({ error: 'no active challenge — request /wallet/challenge first' });
   }

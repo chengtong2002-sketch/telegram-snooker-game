@@ -1,4 +1,4 @@
-import { migrate, closeDb } from '@snooker/db';
+import { migrate, closeDb, purgeExpiredChallenges } from '@snooker/db';
 import { config, assertProductionConfig } from './config.js';
 import { logger } from './logger.js';
 import { buildApp } from './app.js';
@@ -24,9 +24,17 @@ const sweeper = setInterval(() => {
   sweepShotClocks().catch((err) => logger.error({ err: err.message }, 'sweep failed'));
 }, 10_000);
 
+// Expired TON Connect nonces are already rejected on use; this just stops the
+// table growing for every challenge a player requested and never completed.
+const challengeReaper = setInterval(() => {
+  purgeExpiredChallenges().catch((err) => logger.error({ err: err.message }, 'challenge purge failed'));
+}, 10 * 60_000);
+challengeReaper.unref();
+
 async function shutdown(signal) {
   logger.info({ signal }, 'shutting down');
   clearInterval(sweeper);
+  clearInterval(challengeReaper);
   server.close(async () => {
     await closeDb();
     process.exit(0);
