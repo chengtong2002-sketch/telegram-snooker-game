@@ -1,4 +1,16 @@
-import 'dotenv/config';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { config as loadEnv } from 'dotenv';
+
+// npm workspaces run each service with cwd set to its own package directory, so
+// a bare `import 'dotenv/config'` looks for ./<service>/.env and silently misses
+// the repo-root file that .env.example tells you to create. Load both, nearest
+// first: dotenv never overwrites an already-set variable, so a per-service .env
+// beats the root one, and real environment variables (Railway) beat both.
+const here = path.dirname(fileURLToPath(import.meta.url));
+for (const dir of ['..', '../..']) {
+  loadEnv({ path: path.resolve(here, dir, '.env') });
+}
 
 export type Network = 'testnet' | 'mainnet';
 
