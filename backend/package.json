@@ -1,0 +1,32 @@
+{
+  "name": "@snooker/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Authoritative snooker service: server-side physics resolution, foul detection, matchmaking, rewards.",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "dependencies": {
+    "@snooker/db": "*",
+    "@snooker/sim": "*",
+    "@ton/core": "^0.63.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "express-rate-limit": "^7.4.1",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "pino": "^9.5.0",
+    "pino-http": "^10.3.0",
+    "pino-pretty": "^13.0.0",
+    "tweetnacl": "^1.0.3",
+    "uuid": "^11.0.3"
+  },
+  "devDependencies": {
+    "@ton/ton": "^16.3.0"
+  }
+}

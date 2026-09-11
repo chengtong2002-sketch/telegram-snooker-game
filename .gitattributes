@@ -1,0 +1,8 @@
+# Normalise to LF in the repo. Developed on Windows, built and run on Linux
+# (Railway), so committing CRLF would break shell scripts and noise up diffs.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+package-lock.json -diff linguist-generated

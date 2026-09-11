@@ -1,0 +1,229 @@
+# Telegram Snooker — Mini App with PvP crypto rewards
+
+A full-size snooker game that runs inside Telegram. Play the AI for practice, or
+play a real opponent turn by turn; the highest break you make in a PvP match is
+worth a share of a capped daily token pool on TON.
+
+```
+bot/        grammY bot — the front door: /start /wallet /practice /play /leaderboard
+game/       Mini App front-end — canvas table, Matter.js physics, offline queue
+backend/    Express — the authority: re-simulates every PvP shot, scores it, pays out
+token/      TON Blueprint/SDK tooling — deploy the Jetton, settle redemptions
+shared/sim  Snooker physics + rules, imported unchanged by both client and server
+shared/db   Knex schema and accessors — SQLite now, Postgres by changing one variable
+```
+
+## Why it is built this way
+
+**The server re-plays every PvP shot.** The client sends only what the player
+*did* — an angle and a power — never what happened. The backend runs the same
+deterministic simulation and its result is the one that counts. A modified client
+can send a weird shot, but it cannot send a weird outcome.
+
+**Practice can never pay.** It is not a UI flag. Practice never creates a match
+row, and `eligible_breaks` only accepts rows from matches marked
+`crypto_eligible`, which only PvP matches ever are. A client claiming a 147 in
+practice is recorded as analytics and touches nothing else. There is a test for
+exactly that.
+
+**The reward pool cannot be overspent.** `rate = budget ÷ total eligible points
+in the period`. More players earning points makes each point worth less; the
+budget is fixed. Redemption only opens once a period has closed, so the rate a
+player is quoted is the rate they get.
+
+**Nothing is staked.** Players never pay to enter and never lose money. This is
+a skill game with a capped prize, deliberately not a wagering product — see
+*Legal boundary* below.
+
+## Setup
+
+Requires Node 20+.
+
+```bash
+npm install
+cp .env.example .env          # then fill it in — see the comments in that file
+npm run migrate               # creates ./data/snooker.sqlite
+npm test                      # 40 tests: physics, foul rules, rewards, API, wallet proofs
+```
+
+### Run it locally
+
+```bash
+npm run dev                   # backend :8080, bot (long polling), game :5173
+```
+
+The three services can also be run separately with `npm run dev:backend`,
+`npm run dev:bot`, `npm run dev:game`.
+
+To play in a browser without Telegram, set `ALLOW_DEV_AUTH=true` and open
+<http://localhost:5173?mode=practice>. That switch must be off in production —
+it lets anyone log in as anyone.
+
+To test inside Telegram you need an HTTPS URL for the Mini App, because Telegram
+will not open `http://`. Expose the Vite dev server with a tunnel:
+
+```bash
+cloudflared tunnel --url http://localhost:5173      # or: ngrok http 5173
+```
+
+Then set `GAME_URL` to the HTTPS URL it prints, point `VITE_BACKEND_URL` at your
+backend, and restart the bot.
+
+### Register the Mini App
+
+1. In [@BotFather](https://t.me/BotFather): `/newbot`, then copy the token into
+   `BOT_TOKEN`.
+2. `/newapp` → pick the bot → set the Web App URL to your `GAME_URL`.
+3. `/setcommands` is handled automatically — the bot registers its own command
+   list on boot.
+
+## Build order and where things stand
+
+The project was built in this order, and each stage is working:
+
+1. **Bot skeleton** — all five commands plus `/status`, `/cancel`, `/help`.
+2. **Physics and UI, practice first** — Matter.js, full 22-ball table, AI opponent.
+3. **Backend, fouls and scoring** — server-side resolution for every PvP shot.
+4. **PvP matchmaking** — FIFO open queue, async turns, "your turn" push.
+5. **Jetton + wallet** — deploy script ready; TON Connect linking with verified proofs.
+6. **Offline sync** — IndexedDB + CloudStorage queue, dedupe by result ID.
+7. **Integration testing** — 40 automated tests across the stack.
+
+Still to do before a demo: deploy the Jetton to testnet with a funded wallet
+(`npm run deploy -w @snooker/token`), deploy the three services to Railway, and
+play a real two-device match end to end.
+
+## The game
+
+Full snooker, not a reduced set: 15 reds (1 each), yellow 2, green 3, brown 4,
+blue 5, pink 6, black 7, plus the cue ball — 22 balls. That exact configuration
+is what makes a 147 possible, which is the ceiling on a reward-eligible break.
+
+Best of 3 frames. 25-second shot clock, enforced on the server: if you close the
+app mid-turn, a sweeper applies the miss penalty and passes the turn, so nobody
+can stall a match forever.
+
+### Fouls
+
+Any foul ends the break and passes the turn. There is no free-ball rule in this
+version.
+
+| Foul | Penalty |
+|---|---|
+| Miss — the cue ball hits nothing | 4 to the opponent |
+| Wrong ball first | Value of the ball on or the ball hit, whichever is higher, minimum 4 |
+| Cue ball potted | 4, cue ball back in hand |
+| Ball off the table | 4, ball respotted |
+
+Two details follow the real rules rather than the table above, because the table
+does not cover them: a red potted illegally stays down (there is no red spot),
+and if a frame finishes level the black is respotted and the next score or foul
+settles it.
+
+## Rewards
+
+Each finished PvP match contributes exactly one eligible break: the highest
+break made in that match, by whoever made it, capped at 147. Those accumulate
+over a period (daily by default, `REWARD_PERIOD_KIND=weekly` to change it).
+
+When the period closes:
+
+```
+rate            = REWARD_BUDGET_TOKENS ÷ total eligible points that period
+your payout     = your points × rate,  capped at REWARD_MAX_SHARE of the budget
+```
+
+A player redeems once per period, needs a linked wallet, and needs at least
+`REWARD_MIN_POINTS`. Redemptions queue in the database; an operator settles them
+on-chain by running `npm run payout -w @snooker/token`, which does a dry run
+unless passed `--send`. Paying out is deliberately a human-run step, not
+something an HTTP request can trigger.
+
+## Token
+
+Standard TEP-74 Jetton via the no-code path — the reference minter contract from
+`@ton-community/assets-sdk`, not a bespoke emission contract. Mint authority is
+retained by the treasury wallet, and payouts mint to the winner. Total emission
+per period is bounded by the budget the backend enforces.
+
+```bash
+# testnet funds first: @testgiver_ton_bot on Telegram
+npm run deploy -w @snooker/token     # prints JETTON_MASTER_ADDRESS — put it in .env
+npm run info   -w @snooker/token     # supply, admin, explorer link
+npm run mint   -w @snooker/token -- <address> 10     # smoke test
+npm run payout -w @snooker/token     # dry run; add -- --send to settle
+```
+
+Every script that can spend refuses to run against mainnet unless
+`I_UNDERSTAND_THIS_IS_MAINNET=yes` is set. Do the whole flow on testnet first.
+
+TON's native coin was renamed from Toncoin to **Gram (GRAM)** in June 2026; the
+chain is still TON. Older tutorials will still say Toncoin.
+
+## Offline behaviour
+
+Shots are written to IndexedDB (mirrored into Telegram CloudStorage) with a
+client-generated result ID *before* they are sent. If the network drops, the
+queue retries on reconnect, on tab focus, and on a slow timer. The backend
+dedupes on that result ID, so replaying a queue after a flaky connection cannot
+apply a shot twice — it returns the original outcome instead.
+
+## Deployment (Railway)
+
+Three services from this one repo, each with its own `railway.json`:
+
+| Service | Root | Start |
+|---|---|---|
+| backend | `backend/` | `npm run migrate && npm start -w @snooker/backend` |
+| bot | `bot/` | `npm start -w @snooker/bot` |
+| game | `game/` | static build served from `game/dist` |
+
+Add a Postgres plugin and Railway injects `DATABASE_URL`; the same migrations run
+unchanged. The bot and backend must share `DATABASE_URL` and `INTERNAL_API_KEY`.
+Set `VITE_BACKEND_URL` on the game service *before* building — Vite inlines it.
+
+SQLite is fine for a demo but assumes one machine with a persistent volume. Move
+to Postgres before the bot and backend run as separate instances.
+
+## Tests
+
+```bash
+npm test                              # everything
+npm test -w @snooker/sim              # physics determinism, foul table, frame flow
+npm test -w @snooker/backend          # rewards maths, PvP API, ton_proof verification
+npm run smoke:game                    # drives a practice frame in a real browser
+```
+
+`smoke:game` is separate because it needs the backend and vite running plus an
+installed Chrome. It opens the Mini App, places the cue ball, plays several
+shots against the AI, and fails on any console error, uncaught exception or
+failed request — the class of bug unit tests cannot see because it only appears
+when the renderer, controls and game loop run together.
+
+The unit suite covers the things that would actually cost money if they broke:
+the budget can't be overspent, a player can't exceed their share cap, a
+redemption can't be claimed twice, practice can't earn, a replayed shot can't
+count twice, and a wallet proof can't be forged to redirect a payout.
+
+## Known limits
+
+- **Physics is MVP-tuned, not simulation-grade.** No spin, no swerve, no throw.
+  Matter.js has no continuous collision detection, so the timestep and maximum
+  shot speed are chosen together to keep balls from tunnelling — see the comment
+  block in `shared/sim/src/constants.js` before changing either.
+- **The TON Connect nonce store is in-process.** Move it to the database or Redis
+  before running more than one backend replica.
+- **Matchmaking is a plain FIFO queue.** No rating, no rematch, no friend
+  challenge — the pool is too small for those to help yet.
+- **Best of 3 only.** Best of 5 and ranked play are deliberate fast-follows.
+
+## Legal boundary
+
+This is a skill-based game with a capped prize, not a wagering product. Players
+never pay to enter and a losing player never loses money. Do not add
+pay-per-attempt or RNG-driven payout mechanics — that reclassifies the product
+as gambling under Malaysia's Common Gaming Houses Act, and the team is
+Malaysia-based.
+
+Marketing the token as an investment rather than an in-game reward carries
+separate securities-law exposure. Keep the framing on "earned in play".

@@ -1,0 +1,22 @@
+{
+  "name": "@snooker/game",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Telegram Mini App front-end: canvas snooker table, practice AI, PvP client.",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host",
+    "smoke": "node test/drive-practice.mjs"
+  },
+  "dependencies": {
+    "@snooker/sim": "*",
+    "@tonconnect/ui": "^2.0.11",
+    "matter-js": "^0.20.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.3",
+    "playwright-core": "^1.49.0"
+  }
+}

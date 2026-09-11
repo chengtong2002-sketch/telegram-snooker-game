@@ -1,0 +1,15 @@
+{
+  "name": "@snooker/sim",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Deterministic snooker physics + rules. Shared verbatim by the Mini App client and the authoritative backend.",
+  "main": "src/index.js",
+  "exports": { ".": "./src/index.js" },
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\""
+  },
+  "dependencies": {
+    "matter-js": "^0.20.0"
+  }
+}

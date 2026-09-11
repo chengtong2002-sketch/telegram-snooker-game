@@ -1,0 +1,31 @@
+{
+  "name": "telegram-snooker-game",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Telegram Mini App snooker game with async PvP and capped TON token rewards.",
+  "workspaces": [
+    "shared/sim",
+    "shared/db",
+    "bot",
+    "backend",
+    "game",
+    "token"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "migrate": "npm run migrate -w @snooker/db",
+    "dev:backend": "npm run dev -w @snooker/backend",
+    "dev:bot": "npm run dev -w @snooker/bot",
+    "dev:game": "npm run dev -w @snooker/game",
+    "dev": "concurrently -n backend,bot,game -c blue,magenta,green \"npm:dev:backend\" \"npm:dev:bot\" \"npm:dev:game\"",
+    "build:game": "npm run build -w @snooker/game",
+    "test": "npm run test -w @snooker/backend && npm run test -w @snooker/sim",
+    "smoke:game": "npm run smoke -w @snooker/game"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}
