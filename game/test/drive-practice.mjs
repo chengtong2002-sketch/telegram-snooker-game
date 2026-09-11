@@ -11,8 +11,16 @@
  * catch the class of bug that only shows up when the renderer, controls and
  * game loop actually run together.
  */
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { TABLE, BAULK_LINE_X, CENTRE_Y, COLOURS } from '@snooker/sim';
+
+// Resolve screenshots against this file, not the cwd: `npm run smoke -w
+// @snooker/game` runs with cwd already at game/, so a repo-relative path wrote
+// them to game/game/test/ — outside the gitignore rule that covers them.
+const here = path.dirname(fileURLToPath(import.meta.url));
+const shotPath = (name) => path.join(here, name);
 
 // The renderer draws a 9cm rail around the playing surface; mirror that here so
 // the driver can aim at real table coordinates instead of guessing at fractions.
@@ -91,7 +99,7 @@ async function main() {
 
   console.log('\ninitial HUD:', JSON.stringify(await readHud()));
 
-  await page.screenshot({ path: 'game/test/shot-0-initial.png' });
+  await page.screenshot({ path: shotPath('shot-0-initial.png') });
 
   // Break off: the cue ball starts in hand, so place it in the D first.
   const inHand = await page.evaluate(() => document.getElementById('hint').textContent.includes('D'));
@@ -155,10 +163,10 @@ async function main() {
     await sleep(400);
     const after = await readHud();
     console.log(`  -> ${JSON.stringify(after)}`);
-    await page.screenshot({ path: `game/test/shot-${shot}.png` });
+    await page.screenshot({ path: shotPath(`shot-${shot}.png`) });
   }
 
-  await page.screenshot({ path: 'game/test/final.png' });
+  await page.screenshot({ path: shotPath('final.png') });
 
   console.log('\n--- console output ---');
   for (const line of consoleLines.slice(0, 40)) console.log('  ' + line);
