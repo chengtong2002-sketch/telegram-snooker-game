@@ -127,7 +127,7 @@ export class Game {
       this.controls.setPlacing(frame.inHand);
       this.pendingCuePlacement = null;
       if (this.mode === 'practice') this.clockEndsAt = Date.now() + SHOT_CLOCK_MS;
-      this.hud.hint(frame.inHand ? 'Tap inside the D to place the cue ball' : 'Drag to aim · slide the bar for power');
+      this.hud.hint(frame.inHand ? 'Tap inside the D to place the cue ball' : 'Tap to aim · drag to fine-tune · slide the bar for power');
     } else {
       this.phase = 'waiting';
       this.controls.setEnabled(false);
@@ -396,7 +396,9 @@ export class Game {
         balls,
         ballOn: this.frame.ballOn,
         highlightOn: this.phase === 'aiming',
-        aim: this.phase === 'aiming' && !this.frame.inHand ? this.controls.aim : null,
+        // Also while the cue ball is in hand: the player needs to see the line
+        // while choosing where in the D to put the ball.
+        aim: this.phase === 'aiming' ? this.controls.aim : null,
         showD: this.phase === 'aiming' && this.frame.inHand,
       });
     }

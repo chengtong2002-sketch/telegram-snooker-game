@@ -14,7 +14,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
-import { TABLE, BAULK_LINE_X, CENTRE_Y, COLOURS } from '@snooker/sim';
+import { TABLE, BAULK_LINE_X, D_RADIUS, CENTRE_Y, COLOURS } from '@snooker/sim';
 
 // Resolve screenshots against this file, not the cwd: `npm run smoke -w
 // @snooker/game` runs with cwd already at game/, so a repo-relative path wrote
@@ -104,15 +104,18 @@ async function main() {
   // Break off: the cue ball starts in hand, so place it in the D first.
   const inHand = await page.evaluate(() => document.getElementById('hint').textContent.includes('D'));
   if (inHand) {
-    // Park it on the brown spot, dead centre of the D.
-    const spot = worldToPage(canvasBox, BAULK_LINE_X, CENTRE_Y + 10);
+    // Well inside the D. Not the brown spot: that sits on the baulk line, the
+    // D's straight edge, so a tap there passes or fails on sub-pixel rounding.
+    const spot = worldToPage(canvasBox, BAULK_LINE_X - D_RADIUS / 2, CENTRE_Y + 10);
     console.log(`cue ball is in hand — placing it in the D at ${Math.round(spot.x)},${Math.round(spot.y)}`);
     await page.mouse.click(spot.x, spot.y);
     await sleep(300);
     const placed = await readHud();
     console.log('after placing:', JSON.stringify(placed));
-    if (placed.toast.includes('must be placed')) {
-      errors.push('cue ball placement was rejected at the centre of the D');
+    // A tap outside the D aims instead of placing, so a rejected placement no
+    // longer toasts — the hint staying on "Tap inside the D" is the signal.
+    if (placed.hint.includes('Tap inside the D')) {
+      errors.push('cue ball placement was not accepted inside the D');
     }
   }
 
@@ -128,12 +131,14 @@ async function main() {
       ).catch(() => console.log('  (timed out waiting for the turn to come back)'));
     }
 
-    // Aim at the pack, nudged a little each shot so we are not replaying one shot.
+    // Aim at the pack: a tap points the cue at the spot, then a short drag
+    // exercises relative fine-aim. Nudged each shot so we are not replaying one shot.
     const pink = COLOURS.find((c) => c.color === 'pink').spot;
     const target = worldToPage(canvasBox, pink.x, pink.y + (shot - 2) * 12);
-    await page.mouse.move(canvasBox.x + canvasBox.width * 0.25, target.y);
+    await page.mouse.click(target.x, target.y);
+    await page.mouse.move(target.x, target.y);
     await page.mouse.down();
-    await page.mouse.move(target.x, target.y, { steps: 8 });
+    await page.mouse.move(target.x, target.y + (shot % 2 ? 30 : -30), { steps: 6 });
     await page.mouse.up();
 
     // Power: drag the left meter to ~75%.

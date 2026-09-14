@@ -16,9 +16,21 @@
   </head>
   <body>
     <div id="app">
-      <header id="hud">
+      <!-- Landscape phones are short, so every control lives in a side column
+           and the table gets the full height of the screen. -->
+      <aside id="left">
         <button id="pause" class="hud-btn" aria-label="Pause">❚❚</button>
+        <div id="power" role="slider" aria-label="Shot power" aria-valuemin="0" aria-valuemax="100">
+          <div id="power-fill"></div>
+          <div id="power-label">30%</div>
+        </div>
+      </aside>
 
+      <main id="table-wrap">
+        <canvas id="table"></canvas>
+      </main>
+
+      <aside id="hud">
         <div class="player" id="player-a">
           <div class="avatar" id="avatar-a">A</div>
           <div class="who">
@@ -34,28 +46,18 @@
           <div class="breakline" id="breakline">break 0</div>
         </div>
 
-        <div class="player right" id="player-b">
-          <div class="score" id="score-b">0</div>
+        <div class="player" id="player-b">
+          <div class="avatar" id="avatar-b">AI</div>
           <div class="who">
             <span class="name" id="name-b">AI</span>
             <span class="frames" id="frames-b"></span>
           </div>
-          <div class="avatar" id="avatar-b">AI</div>
-        </div>
-      </header>
-
-      <main id="stage">
-        <div id="power" role="slider" aria-label="Shot power" aria-valuemin="0" aria-valuemax="100">
-          <div id="power-fill"></div>
-          <div id="power-label">30%</div>
+          <div class="score" id="score-b">0</div>
         </div>
 
-        <div id="table-wrap">
-          <canvas id="table"></canvas>
-          <div id="hint"></div>
-          <button id="shoot" class="shoot">SHOOT</button>
-        </div>
-      </main>
+        <div id="hint"></div>
+        <button id="shoot" class="shoot">SHOOT</button>
+      </aside>
 
       <div id="toast" hidden></div>
       <div id="sync-badge" hidden>⏳ <span id="sync-count">0</span> queued</div>

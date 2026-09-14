@@ -1,3 +1,4 @@
+import { trackVisibleViewport } from './viewport.js';
 import { initTelegram, launchParams, themeUser, close as closeApp } from './telegram.js';
 import { Hud } from './hud.js';
 import { TableRenderer } from './renderer.js';
@@ -13,23 +14,24 @@ const openWalletScreen = async (...args) => {
   return mod.openWalletScreen(...args);
 };
 
+trackVisibleViewport();
+
 const hud = new Hud();
 const canvas = document.getElementById('table');
 const renderer = new TableRenderer(canvas);
 
 let game = null;
 
+const tableWrap = document.getElementById('table-wrap');
+
+/** Fill the table column. Its size is set by the layout alone, not by the canvas. */
 function fitCanvas() {
-  const stage = document.getElementById('stage');
-  const meter = document.getElementById('power');
-  const pad = 16;
-  const w = stage.clientWidth - meter.offsetWidth - pad - 8;
-  const h = stage.clientHeight - pad;
-  renderer.resize(Math.max(120, w), Math.max(80, h));
+  renderer.resize(Math.max(120, tableWrap.clientWidth), Math.max(80, tableWrap.clientHeight));
 }
 
-window.addEventListener('resize', fitCanvas);
-window.addEventListener('orientationchange', () => setTimeout(fitCanvas, 250));
+// Catches rotation, browser toolbars sliding away and Telegram's viewport
+// changes, all of which resize the column without necessarily firing `resize`.
+new ResizeObserver(fitCanvas).observe(tableWrap);
 
 function pauseMenu() {
   const inPractice = game?.mode === 'practice';

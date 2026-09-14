@@ -7,7 +7,18 @@
   --accent: #35c48a;
   --warn: #e2b23c;
   --danger: #e35c4d;
-  --hud-h: 52px;
+  --gap: 6px;
+  --side-l: clamp(48px, 7vw, 64px);
+  --side-r: clamp(96px, 14vw, 136px);
+
+  /* Notches and home indicators, plus Telegram's own fullscreen chrome (the
+     close / menu buttons float over the top corners — the SDK publishes their
+     size as --tg-content-safe-area-inset-*). */
+  --safe-l: max(env(safe-area-inset-left), var(--tg-safe-area-inset-left, 0px));
+  --safe-r: max(env(safe-area-inset-right), var(--tg-safe-area-inset-right, 0px));
+  --safe-b: max(env(safe-area-inset-bottom), var(--tg-safe-area-inset-bottom, 0px));
+  --safe-t: max(env(safe-area-inset-top), var(--tg-safe-area-inset-top, 0px));
+  --corner-t: calc(var(--safe-t) + var(--tg-content-safe-area-inset-top, 0px));
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -24,40 +35,82 @@ html, body {
   user-select: none;
 }
 
-#app { display: flex; flex-direction: column; height: 100dvh; }
-
-/* ---------- HUD ---------- */
-
-#hud {
-  height: var(--hud-h);
-  flex: 0 0 auto;
-  display: grid;
-  grid-template-columns: 40px 1fr auto 1fr;
-  align-items: center;
-  gap: 8px;
-  padding: 0 10px;
-  padding-top: env(safe-area-inset-top);
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
+/* Three columns — controls | table | scoreboard — so the table is limited only
+   by the screen height, which is the scarce dimension on a landscape phone. */
+/* Sized to the *visible* area. viewport.js sets --app-* from visualViewport so
+   the browser's address bar and toolbar never cover the controls; 100dvh is
+   the fallback where that API is missing. Toasts and the overlay are
+   positioned inside #app so they stay in view too. */
+#app {
+  position: fixed;
+  top: var(--app-top, 0px);
+  left: var(--app-left, 0px);
+  width: var(--app-w, 100%);
+  height: 100vh;
+  height: 100dvh;
+  height: var(--app-h, 100dvh);
+  display: flex;
+  gap: var(--gap);
+  padding: var(--gap);
+  padding-left: calc(var(--gap) + var(--safe-l));
+  padding-right: calc(var(--gap) + var(--safe-r));
+  padding-bottom: calc(var(--gap) + var(--safe-b));
+  padding-top: calc(var(--gap) + var(--safe-t));
 }
 
+/* Side columns clear Telegram's floating corner buttons; the table between
+   them does not need to, so it keeps the full height. */
+#left, #hud {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  min-height: 0;
+  padding-top: calc(var(--corner-t) - var(--safe-t));
+}
+#left { width: var(--side-l); }
+
+/* ---------- scoreboard ---------- */
+
+/* A size container, so the column can compact itself when browser toolbars
+   leave it short (see the @container rules below). Media queries cannot do
+   this — they see the whole window, not the visible part #app is sized to. */
+#hud {
+  width: var(--side-r);
+  justify-content: space-between;
+  container-type: size;
+}
+/* Last line of defence where container queries are unsupported: the score
+   cards give up height, SHOOT never does. */
+#hud > .player, #hud > .centre, #hud > #hint { flex-shrink: 1; min-height: 0; overflow: hidden; }
+
 .hud-btn {
-  width: 34px; height: 34px;
+  width: 100%; height: 44px;
+  flex: 0 0 auto;
   border: 1px solid var(--line);
-  border-radius: 9px;
-  background: transparent;
+  border-radius: 12px;
+  background: var(--panel);
   color: var(--muted);
-  font-size: 12px;
+  font-size: 14px;
   cursor: pointer;
 }
 .hud-btn:active { background: var(--line); }
 
-.player { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.player.right { justify-content: flex-end; }
+.player {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 6px;
+  padding: 6px 8px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  min-width: 0;
+}
+.player.active { border-color: rgba(53,196,138,.55); }
 
 .avatar {
   width: 30px; height: 30px;
-  flex: 0 0 auto;
   border-radius: 50%;
   background: #24352d;
   border: 2px solid transparent;
@@ -68,17 +121,20 @@ html, body {
 .avatar img { width: 100%; height: 100%; object-fit: cover; }
 .player.active .avatar { border-color: var(--accent); box-shadow: 0 0 10px rgba(53,196,138,.45); }
 
-.who { display: flex; flex-direction: column; min-width: 0; }
+.who { grid-column: 1 / -1; grid-row: 2; display: flex; flex-direction: column; min-width: 0; margin-top: 2px; }
 .name {
   font-size: 12px; font-weight: 600;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 22vw;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .frames { font-size: 10px; color: var(--muted); letter-spacing: 2px; }
-.score { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.score {
+  grid-column: 2; grid-row: 1; justify-self: end;
+  font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1;
+}
 
-.centre { text-align: center; line-height: 1.1; }
+.centre { text-align: center; line-height: 1.15; }
 .clock {
-  font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums;
+  font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums;
   color: var(--accent);
 }
 .clock.warn { color: var(--warn); }
@@ -86,19 +142,29 @@ html, body {
 @keyframes pulse { to { opacity: .45; } }
 .ballon, .breakline { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
 
-/* ---------- stage ---------- */
-
-#stage {
-  flex: 1 1 auto;
-  display: flex;
-  min-height: 0;
-  padding: 8px;
-  gap: 8px;
+/* Short column (toolbars showing, small phone): one-row score cards, no
+   avatars, a shorter SHOOT. Everything still fits in ~220px. */
+@container (max-height: 330px) {
+  .player { padding: 4px 8px; }
+  .avatar { display: none; }
+  .who { grid-column: 1; grid-row: 1; margin-top: 0; }
+  .score { font-size: 20px; }
+  .clock { font-size: 18px; }
+  .breakline { display: none; }
+  #hud .shoot { min-height: 46px; font-size: 15px; } /* #hud: outranks .shoot, declared later */
 }
+@container (max-height: 250px) {
+  .frames { display: none; }
+  .ballon { display: none; }
+  #hint { font-size: 10px; }
+}
+
+/* ---------- controls ---------- */
 
 #power {
   position: relative;
-  flex: 0 0 42px;
+  flex: 1 1 0;
+  min-height: 0;
   border-radius: 12px;
   background: var(--panel);
   border: 1px solid var(--line);
@@ -112,30 +178,38 @@ html, body {
   transition: height .05s linear;
 }
 #power-label {
-  position: absolute; left: 0; right: 0; top: 6px;
-  text-align: center; font-size: 10px; font-weight: 700;
+  position: absolute; left: 0; right: 0; top: 8px;
+  text-align: center; font-size: 12px; font-weight: 700;
   color: var(--text); text-shadow: 0 1px 2px #000;
 }
 
-#table-wrap { position: relative; flex: 1 1 auto; display: grid; place-items: center; min-width: 0; }
-#table { touch-action: none; border-radius: 10px; max-width: 100%; max-height: 100%; }
+/* flex-basis 0 + hidden overflow: the wrap's size comes from the screen, never
+   from the canvas inside it, so fitCanvas() cannot feed back on itself. */
+#table-wrap {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0; min-height: 0;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+#table { touch-action: none; border-radius: 10px; flex: 0 0 auto; }
 
 .shoot {
-  position: absolute; right: 10px; bottom: 8px;
-  padding: 10px 18px;
-  border: none; border-radius: 999px;
+  flex: 0 0 auto;
+  min-height: 56px;
+  border: none; border-radius: 14px;
   background: var(--accent); color: #06110c;
-  font-weight: 800; font-size: 13px; letter-spacing: 1px;
+  font-weight: 800; font-size: 16px; letter-spacing: 1px;
   box-shadow: 0 4px 14px rgba(0,0,0,.45);
   cursor: pointer;
 }
 .shoot:disabled { background: #2c3a34; color: var(--muted); box-shadow: none; }
 .shoot:active:not(:disabled) { transform: translateY(1px); }
 
+/* In the scoreboard column, just above SHOOT: over the table it collided with
+   the toast and covered the baulk cushion. */
 #hint {
-  position: absolute; left: 10px; bottom: 10px;
-  font-size: 11px; color: var(--muted);
-  background: rgba(0,0,0,.45); padding: 4px 8px; border-radius: 6px;
+  font-size: 11px; line-height: 1.3; color: var(--muted); text-align: center;
   pointer-events: none;
 }
 #hint:empty { display: none; }
@@ -158,14 +232,14 @@ html, body {
 #toast.good { border-color: var(--accent); color: #cdf5e5; }
 
 #sync-badge {
-  position: absolute; right: 10px; top: calc(var(--hud-h) + 10px);
+  position: absolute; left: 50%; top: calc(var(--corner-t) + 8px); transform: translateX(-50%);
   font-size: 11px; color: var(--warn);
   background: rgba(8,16,13,.9); border: 1px solid var(--line);
   padding: 3px 8px; border-radius: 999px; z-index: 20;
 }
 
 #overlay {
-  position: fixed; inset: 0; z-index: 40;
+  position: absolute; inset: 0; z-index: 40;
   background: rgba(4,9,7,.8);
   display: grid; place-items: center;
   padding: 16px;
@@ -179,7 +253,7 @@ html, body {
   border-radius: 16px;
   padding: 18px 20px;
   width: min(520px, 92vw);
-  max-height: 86dvh; overflow: auto;
+  max-height: 100%; overflow: auto;
 }
 .sheet h2 { margin: 0 0 10px; font-size: 18px; }
 .sheet p { margin: 6px 0; color: var(--muted); font-size: 13px; }
