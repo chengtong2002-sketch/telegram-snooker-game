@@ -32,6 +32,14 @@ export const network = (): Network => {
 
 export const mnemonic = (): string[] => required('TON_WALLET_MNEMONIC').trim().split(/\s+/);
 
+export const walletVersion = (): 'v4' | 'v5r1' => {
+  const value = (process.env.TON_WALLET_VERSION ?? 'v5r1').toLowerCase();
+  if (value !== 'v4' && value !== 'v5r1') {
+    throw new Error(`TON_WALLET_VERSION must be "v4" or "v5r1", got "${value}"`);
+  }
+  return value;
+};
+
 export const jettonMaster = (): string => required('JETTON_MASTER_ADDRESS');
 
 export const jettonMeta = () => ({

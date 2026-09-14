@@ -1,13 +1,15 @@
 import { mnemonicToPrivateKey } from '@ton/crypto';
-import { TonClient4, WalletContractV4 } from '@ton/ton';
+import { TonClient4, WalletContractV4, WalletContractV5R1 } from '@ton/ton';
 import { AssetsSDK, createApi, NoopStorage } from '@ton-community/assets-sdk';
 import type { OpenedContract, Sender } from '@ton/core';
-import { network, mnemonic, assertNetworkConfirmed } from './env.js';
+import { network, mnemonic, walletVersion, assertNetworkConfirmed, type Network } from './env.js';
+
+type TreasuryWallet = WalletContractV4 | WalletContractV5R1;
 
 export interface Treasury {
   sdk: AssetsSDK;
   api: Awaited<ReturnType<typeof createApi>>;
-  wallet: OpenedContract<WalletContractV4>;
+  wallet: OpenedContract<TreasuryWallet>;
   sender: Sender;
   address: string;
   network: 'testnet' | 'mainnet';
@@ -28,8 +30,8 @@ export async function openTreasury(): Promise<Treasury> {
   const keyPair = await mnemonicToPrivateKey(mnemonic());
 
   const wallet = (api as unknown as TonClient4).open(
-    WalletContractV4.create({ workchain: 0, publicKey: keyPair.publicKey }),
-  ) as OpenedContract<WalletContractV4>;
+    createWallet(net, keyPair.publicKey),
+  ) as OpenedContract<TreasuryWallet>;
 
   const sender = wallet.sender(keyPair.secretKey);
   const sdk = AssetsSDK.create({ api, sender, storage: new NoopStorage() });
@@ -42,6 +44,22 @@ export async function openTreasury(): Promise<Treasury> {
     address: wallet.address.toString({ urlSafe: true, bounceable: false, testOnly: net === 'testnet' }),
     network: net,
   };
+}
+
+/**
+ * The same mnemonic yields a different address per wallet contract version, so
+ * this must match the wallet app that holds the funds. Current Tonkeeper and
+ * Telegram Wallet create W5 (v5r1). A v5r1 wallet id also embeds the network,
+ * so a testnet W5 address differs from the mainnet one.
+ */
+function createWallet(net: Network, publicKey: Buffer): TreasuryWallet {
+  if (walletVersion() === 'v4') {
+    return WalletContractV4.create({ workchain: 0, publicKey });
+  }
+  return WalletContractV5R1.create({
+    publicKey,
+    walletId: { networkGlobalId: net === 'testnet' ? -3 : -239 },
+  });
 }
 
 export async function treasuryBalance(treasury: Treasury): Promise<bigint> {
