@@ -8,7 +8,8 @@
     "deploy": "tsx scripts/deployJetton.ts",
     "mint": "tsx scripts/mint.ts",
     "info": "tsx scripts/info.ts",
-    "payout": "tsx scripts/payout.ts"
+    "payout": "tsx scripts/payout.ts",
+    "test": "node --import tsx --test \"test/**/*.test.mts\""
   },
   "dependencies": {
     "@snooker/db": "*",

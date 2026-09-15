@@ -139,6 +139,13 @@ on-chain by running `npm run payout -w @snooker/token`, which does a dry run
 unless passed `--send`. Paying out is deliberately a human-run step, not
 something an HTTP request can trigger.
 
+A mint that may have gone out is never retried automatically. If confirmation
+times out or the send errors, the redemption is marked `unconfirmed` and
+`--send` refuses to run until someone checks the recipient on the explorer and
+resolves it with `-- --mark-sent <id>` (it landed) or `-- --requeue <id>` (it
+did not). Rows are claimed atomically, so two overlapping runs cannot pay the
+same one, and a period whose committed tokens exceed its budget is not paid.
+
 ## Token
 
 Standard TEP-74 Jetton via the no-code path — the reference minter contract from

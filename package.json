@@ -22,7 +22,7 @@
     "dev:game": "npm run dev -w @snooker/game",
     "dev": "concurrently -n backend,bot,game -c blue,magenta,green \"npm:dev:backend\" \"npm:dev:bot\" \"npm:dev:game\"",
     "build:game": "npm run build -w @snooker/game",
-    "test": "npm run test -w @snooker/backend && npm run test -w @snooker/sim",
+    "test": "npm run test -w @snooker/backend && npm run test -w @snooker/sim && npm run test -w @snooker/token",
     "smoke:game": "npm run smoke -w @snooker/game"
   },
   "devDependencies": {

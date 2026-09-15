@@ -1,65 +1,110 @@
 /**
  * Settle queued redemptions on-chain.
  *
- *   npm run payout -w @snooker/token            # dry run, prints what it would send
- *   npm run payout -w @snooker/token -- --send  # actually sends
+ *   npm run payout -w @snooker/token                          # dry run, prints what it would send
+ *   npm run payout -w @snooker/token -- --send                # actually sends
+ *   npm run payout -w @snooker/token -- --mark-sent <id>      # after checking the explorer: it landed
+ *   npm run payout -w @snooker/token -- --requeue <id>        # after checking the explorer: it did not
  *
  * Deliberately a separate operator-run script rather than something the API
  * does inline: paying out is the only step that moves real value, and it should
  * be something a person chooses to run after looking at the numbers.
  *
  * Payouts mint new tokens, which is why mint authority is retained. Total
- * emission is bounded by the per-period budget the backend enforces, so the
- * amount minted in a period can never exceed REWARD_BUDGET_TOKENS.
+ * emission is bounded by the per-period budget the backend enforces, and this
+ * script refuses to send for any period whose committed total exceeds it.
+ *
+ * A mint that may have been broadcast is never retried automatically — see
+ * src/settlement.ts for the states and why.
  */
 import { Address } from '@ton/core';
 import { getDb, closeDb } from '@snooker/db';
 import { openTreasury, treasuryBalance, explorerUrl, waitForSeqno } from '../src/client.js';
 import { jettonMaster, toUnits, network } from '../src/env.js';
+import {
+  claimForSending, releaseClaim, markSent, markFailed, markUnconfirmed,
+  resolveByOperator, budgetChecks, NEEDS_CHECK, type RedemptionRow,
+} from '../src/settlement.js';
 
 const SEND = process.argv.includes('--send');
 const MIN_TREASURY_GRAM = 100_000_000n; // 0.1 GRAM: each mint costs gas
 
-interface RedemptionRow {
-  id: number;
-  user_id: number;
-  period_id: number;
-  points: number;
-  tokens: string | number;
-  address: string;
-  network: string;
-  status: string;
+const flagValue = (flag: string) => {
+  const i = process.argv.indexOf(flag);
+  return i === -1 ? null : process.argv[i + 1] ?? '';
+};
+
+async function resolveCommand(): Promise<boolean> {
+  const sent = flagValue('--mark-sent');
+  const requeue = flagValue('--requeue');
+  if (sent === null && requeue === null) return false;
+  const id = Number(sent ?? requeue);
+  if (!Number.isInteger(id) || id <= 0) throw new Error('pass a redemption id, e.g. --mark-sent 12');
+  const result = await resolveByOperator(getDb(), id, sent !== null ? 'sent' : 'pending');
+  if (!result.ok) throw new Error(result.reason);
+  console.log(`#${id} is now ${sent !== null ? 'sent' : 'pending (will be sent on the next --send)'}.`);
+  return true;
 }
 
 async function main() {
-  const treasury = await openTreasury();
+  if (await resolveCommand()) return;
+
   const knex = getDb();
-  const master = Address.parse(jettonMaster());
-  const minter = treasury.sdk.openJetton(master);
+  const net = network();
+
+  // Anything a previous run could not confirm has to be checked by a person
+  // first. Sending more while those are unresolved is how double payments hide.
+  const needsCheck: RedemptionRow[] = await knex('redemptions')
+    .whereIn('status', NEEDS_CHECK)
+    .andWhere({ network: net })
+    .orderBy('id', 'asc');
+  if (needsCheck.length > 0) {
+    console.log('These redemptions may or may not have been minted. Check each recipient on the explorer:\n');
+    for (const row of needsCheck) {
+      console.log(`  #${row.id} ${row.status} · ${Number(row.tokens).toFixed(6)} → ${row.address}${row.error ? ` (${row.error})` : ''}`);
+    }
+    console.log('\nthen resolve each with --mark-sent <id> (it landed) or --requeue <id> (it did not).');
+  }
 
   const pending: RedemptionRow[] = await knex('redemptions')
     .where({ status: 'pending' })
-    .andWhere({ network: network() })
+    .andWhere({ network: net })
     .orderBy('created_at', 'asc');
 
   if (pending.length === 0) {
-    console.log('nothing pending.');
+    console.log(needsCheck.length ? '\nnothing pending.' : 'nothing pending.');
     return;
   }
 
-  const total = pending.reduce((sum, r) => sum + Number(r.tokens), 0);
-  console.log(`network:  ${treasury.network}`);
-  console.log(`treasury: ${treasury.address}`);
-  console.log(`pending:  ${pending.length} redemptions, ${total.toFixed(6)} tokens total\n`);
+  const checks = await budgetChecks(knex, pending.map((r) => r.period_id));
+  const overBudget = new Set(checks.filter((c) => c.over).map((c) => c.periodId));
 
+  const total = pending.reduce((sum, r) => sum + Number(r.tokens), 0);
+  console.log(`\nnetwork:  ${net}`);
+  console.log(`pending:  ${pending.length} redemptions, ${total.toFixed(6)} tokens total\n`);
   for (const row of pending) {
-    console.log(`  #${row.id} user ${row.user_id} · ${Number(row.tokens).toFixed(6)} → ${row.address}`);
+    const flag = overBudget.has(row.period_id) ? '  ✗ period over budget' : '';
+    console.log(`  #${row.id} user ${row.user_id} · period ${row.period_id} · ${Number(row.tokens).toFixed(6)} → ${row.address}${flag}`);
+  }
+  for (const c of checks.filter((x) => x.over)) {
+    console.log(`\n✗ period ${c.periodId}: ${c.committed} tokens committed against a budget of ${c.budget}. `
+      + 'Its redemptions will not be sent — investigate before settling.');
   }
 
   if (!SEND) {
     console.log('\ndry run. re-run with --send to settle these.');
     return;
   }
+  if (needsCheck.length > 0) {
+    console.error('\nrefusing to send while redemptions above are unresolved.');
+    process.exitCode = 1;
+    return;
+  }
+
+  const treasury = await openTreasury();
+  const master = Address.parse(jettonMaster());
+  const minter = treasury.sdk.openJetton(master);
+  console.log(`treasury: ${treasury.address}`);
 
   const balance = await treasuryBalance(treasury);
   if (balance < MIN_TREASURY_GRAM) {
@@ -68,53 +113,73 @@ async function main() {
   }
 
   console.log('\nsending…\n');
-  let sent = 0;
-  let failed = 0;
+  const tally = { sent: 0, failed: 0, unconfirmed: 0, skipped: 0 };
 
   for (const row of pending) {
-    // Re-check inside the loop: a long run could overlap with another operator.
-    const fresh = await knex('redemptions').where({ id: row.id }).first();
-    if (!fresh || fresh.status !== 'pending') {
-      console.log(`  #${row.id} skipped (status is now ${fresh?.status})`);
+    if (overBudget.has(row.period_id)) {
+      tally.skipped += 1;
+      continue;
+    }
+    // Atomic claim: if another run got here first, leave the row to it.
+    if (!(await claimForSending(knex, row.id))) {
+      console.log(`  #${row.id} skipped (another run claimed it)`);
+      tally.skipped += 1;
       continue;
     }
 
+    // --- before broadcast: any failure here means nothing was sent ---------
+    let recipient: Address;
+    let units: bigint;
+    let seqno: number;
     try {
-      const recipient = Address.parse(row.address);
-      const units = toUnits(Number(row.tokens).toFixed(9));
-      if (units <= 0n) {
-        await knex('redemptions').where({ id: row.id })
-          .update({ status: 'failed', error: 'amount rounded to zero', settled_at: new Date() });
-        console.log(`  #${row.id} zero amount — marked failed`);
-        failed += 1;
-        continue;
-      }
+      recipient = Address.parse(row.address);
+      units = toUnits(Number(row.tokens).toFixed(9));
+    } catch (err) {
+      await markFailed(knex, row.id, `bad redemption: ${err instanceof Error ? err.message : String(err)}`);
+      console.log(`  #${row.id} failed: unusable address or amount`);
+      tally.failed += 1;
+      continue;
+    }
+    if (units <= 0n) {
+      await markFailed(knex, row.id, 'amount rounded to zero');
+      console.log(`  #${row.id} zero amount — marked failed`);
+      tally.failed += 1;
+      continue;
+    }
+    try {
+      seqno = await treasury.wallet.getSeqno();
+    } catch (err) {
+      await releaseClaim(knex, row.id, `seqno lookup failed: ${err instanceof Error ? err.message : String(err)}`);
+      console.log(`  #${row.id} not sent (could not read seqno) — left pending`);
+      tally.skipped += 1;
+      continue;
+    }
 
-      const seqno = await treasury.wallet.getSeqno();
+    // --- broadcast: from here on, an error does not prove nothing landed ---
+    try {
       await minter.sendMint(treasury.sender, recipient, units);
       const landed = await waitForSeqno(treasury, seqno);
-
-      await knex('redemptions').where({ id: row.id }).update({
-        status: landed ? 'sent' : 'pending',
-        error: landed ? null : 'confirmation timed out; will be retried',
-        settled_at: landed ? new Date() : null,
+      if (landed) {
         // TonClient4 does not hand back a message hash here; the recipient's
         // address is the practical audit trail, so record that.
-        tx_hash: landed ? `mint:${recipient.toString()}` : null,
-      });
-
-      console.log(`  #${row.id} ${landed ? 'sent ✓' : 'unconfirmed — left pending'}`);
-      if (landed) sent += 1;
+        await markSent(knex, row.id, `mint:${recipient.toString()}`);
+        console.log(`  #${row.id} sent ✓`);
+        tally.sent += 1;
+      } else {
+        await markUnconfirmed(knex, row.id, 'confirmation timed out; check the explorer before resolving');
+        console.log(`  #${row.id} UNCONFIRMED — check the explorer, then --mark-sent or --requeue`);
+        tally.unconfirmed += 1;
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      await knex('redemptions').where({ id: row.id })
-        .update({ status: 'failed', error: message.slice(0, 500), settled_at: new Date() });
-      console.log(`  #${row.id} failed: ${message}`);
-      failed += 1;
+      await markUnconfirmed(knex, row.id, `error during send: ${message}`);
+      console.log(`  #${row.id} UNCONFIRMED (error during send: ${message}) — check the explorer before resolving`);
+      tally.unconfirmed += 1;
     }
   }
 
-  console.log(`\ndone: ${sent} sent, ${failed} failed, ${pending.length - sent - failed} left pending.`);
+  console.log(`\ndone: ${tally.sent} sent, ${tally.failed} failed, ${tally.unconfirmed} unconfirmed, ${tally.skipped} skipped.`);
+  if (tally.unconfirmed) console.log('unconfirmed rows block the next --send until resolved.');
   console.log(explorerUrl(treasury.network, master.toString()));
 }
 
