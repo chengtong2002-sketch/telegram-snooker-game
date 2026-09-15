@@ -1,4 +1,4 @@
-import { getDb, activeWallet, userById } from '@snooker/db';
+import { getDb, activeWallet, userById, toBool } from '@snooker/db';
 import { MAX_BREAK } from '@snooker/sim';
 import { config } from '../config.js';
 
@@ -81,8 +81,11 @@ export async function currentPeriod(now = new Date()) {
 
 /**
  * Record the one crypto-eligible break for a finished PvP match.
- * Practice matches never reach here — the caller checks crypto_eligible, and
- * the unique index on match_id makes a replay a no-op.
+ *
+ * Eligibility is read from the stored match row, never from `matchRow`: the
+ * match must exist, be mode 'pvp' and be flagged crypto_eligible. Practice is
+ * refused on mode alone, even if a row were ever wrongly flagged. The unique
+ * index on match_id makes a replay a no-op.
  *
  * This is where the daily limits apply: the match has already been played in
  * full. If the break's owner is over a limit, nothing is awarded and the
@@ -93,8 +96,9 @@ export async function currentPeriod(now = new Date()) {
  *   | {userId, breakValue: 0, blockedBreak, ineligibleReason}>}
  */
 export async function recordEligibleBreak(matchRow, matchState, { now = new Date() } = {}) {
-  if (!matchRow.crypto_eligible) return null;
   const knex = getDb();
+  const match = await knex('matches').where({ id: matchRow.id }).first();
+  if (!match || match.mode !== 'pvp' || !toBool(match.crypto_eligible)) return null;
 
   const [aBreak, bBreak] = matchState.highBreaks;
   const best = Math.min(MAX_BREAK, Math.max(aBreak, bBreak));
@@ -110,8 +114,7 @@ export async function recordEligibleBreak(matchRow, matchState, { now = new Date
   if (existing) {
     return { userId: existing.user_id, breakValue: existing.break_value, periodId: existing.period_id };
   }
-  const match = await knex('matches').where({ id: matchRow.id }).first();
-  if (match?.ineligible_reason) {
+  if (match.ineligible_reason) {
     return { userId, breakValue: 0, blockedBreak: best, ineligibleReason: match.ineligible_reason };
   }
 

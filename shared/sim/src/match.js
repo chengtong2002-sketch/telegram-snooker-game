@@ -8,6 +8,9 @@ import {
  * then either rack the next frame or end the match (best of 3).
  */
 export function advanceMatch(match, frameState) {
+  // A decided match takes no more frames. The backend already refuses shots on
+  // a completed match; this keeps the rule true for any other caller.
+  if (match.ended) return structuredClone(match);
   const next = structuredClone(match);
   next.frame = frameState;
 

@@ -97,8 +97,9 @@ function spotFree(state, spot, ignoreId) {
 
 /**
  * Put a potted colour back. Own spot first; if occupied, the highest-value free
- * spot; if every spot is taken, as near its own spot as possible on the centre
- * line toward the black end.
+ * spot; if every spot is taken, as near its own spot as possible on its line
+ * toward the top (black-end) cushion; if that whole line is blocked, as near as
+ * possible on the other side of the spot. It never lands on another ball.
  */
 export function respotColour(state, colourId) {
   const ball = ballById(state, colourId);
@@ -116,16 +117,21 @@ export function respotColour(state, colourId) {
       return;
     }
   }
-  let x = own.x;
-  while (x < TABLE.width - BALL_RADIUS) {
-    const probe = { x, y: own.y };
-    if (spotFree(state, probe, colourId)) {
-      Object.assign(ball, { x: probe.x, y: probe.y, potted: false });
+  for (let x = own.x; x < TABLE.width - BALL_RADIUS; x += BALL_RADIUS) {
+    if (spotFree(state, { x, y: own.y }, colourId)) {
+      Object.assign(ball, { x, y: own.y, potted: false });
       return;
     }
-    x += BALL_RADIUS;
   }
-  Object.assign(ball, { x: own.x, y: own.y, potted: false });
+  // Falling back to the own spot here used to drop the ball on top of whatever
+  // was blocking it.
+  for (let x = own.x - BALL_RADIUS; x > BALL_RADIUS; x -= BALL_RADIUS) {
+    if (spotFree(state, { x, y: own.y }, colourId)) {
+      Object.assign(ball, { x, y: own.y, potted: false });
+      return;
+    }
+  }
+  Object.assign(ball, { x: own.x, y: own.y, potted: false }); // unreachable with 22 balls
 }
 
 /** Cue ball back in hand, parked in the D until the player places it. */
