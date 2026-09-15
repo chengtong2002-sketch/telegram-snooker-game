@@ -1,10 +1,30 @@
 import { simulateShot } from './simulate.js';
 import {
   BALL_VALUES, COLOUR_ORDER, MIN_FOUL, MAX_BREAK, TABLE, BALL_RADIUS, BALL_DIAMETER, COLOURS,
+  BAULK_LINE_X, D_RADIUS, CENTRE_Y,
 } from './constants.js';
 import {
   ballById, redsOnTable, nextColourOn, respotColour, respotCueBall,
 } from './state.js';
+
+/** Centre of the cue ball on or behind the baulk line, within the D's semicircle. */
+export const inTheD = (x, y) => x <= BAULK_LINE_X && Math.hypot(x - BAULK_LINE_X, y - CENTRE_Y) <= D_RADIUS;
+
+/**
+ * Why a ball-in-hand placement is illegal, or null if it is fine: it must be
+ * inside the D and not overlap a ball on the table. The client only offers
+ * legal spots, but a PvP shot is a crafted request as far as the server knows,
+ * so this is the rule — not a UI nicety.
+ */
+export function cuePlacementProblem(frameState, placement) {
+  const { x, y } = placement ?? {};
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return 'cue ball placement must be numbers';
+  if (!inTheD(x, y)) return 'cue ball must be placed inside the D';
+  const overlaps = frameState.balls.some(
+    (b) => b.id !== 'cue' && !b.potted && Math.hypot(b.x - x, b.y - y) < BALL_DIAMETER,
+  );
+  return overlaps ? 'cue ball cannot be placed touching another ball' : null;
+}
 
 const isRed = (id) => id.startsWith('red');
 const valueOfBall = (id) => (isRed(id) ? 1 : (BALL_VALUES[id] ?? 0));
@@ -61,6 +81,17 @@ function contactLegal(state, firstContact) {
  * @returns {{state:object, outcome:object}}
  */
 export function resolveShot(frameState, shot) {
+  // Placement only means anything with the ball in hand; otherwise the cue ball
+  // plays from where it lies. An illegal placement is a caller bug (the server
+  // rejects it before getting here), so fail loudly rather than play it.
+  if (shot.cuePlacement) {
+    if (!frameState.inHand) {
+      shot = { ...shot, cuePlacement: undefined };
+    } else {
+      const problem = cuePlacementProblem(frameState, shot.cuePlacement);
+      if (problem) throw new Error(problem);
+    }
+  }
   const state = structuredClone(frameState);
   const sim = simulateShot(state.balls, shot, { trace: shot.trace === true });
   state.balls = sim.balls;

@@ -2,7 +2,7 @@ import { v4 as uuid } from 'uuid';
 import { getDb, toJson, fromJson, toBool } from '@snooker/db';
 import {
   newMatch, resolveShot, resolveTimeout, advanceMatch, matchHighBreak,
-  MAX_BREAK, TABLE, BALL_RADIUS,
+  cuePlacementProblem, MAX_BREAK,
 } from '@snooker/sim';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
@@ -166,15 +166,11 @@ export async function applyShot({ matchId, userId, resultId, shot }) {
   }
   const cleanShot = { angle, power };
   if (state.frame.inHand && shot.cuePlacement) {
-    const { x, y } = shot.cuePlacement;
-    if (isNum(x) && isNum(y)) {
-      // Clamp into the playing surface so a crafted placement cannot put the
-      // cue ball inside a cushion or off the table.
-      cleanShot.cuePlacement = {
-        x: Math.min(TABLE.width - BALL_RADIUS, Math.max(BALL_RADIUS, x)),
-        y: Math.min(TABLE.height - BALL_RADIUS, Math.max(BALL_RADIUS, y)),
-      };
-    }
+    // Reject, never clamp: clamping only kept the ball on the table, so a
+    // crafted request could take ball-in-hand from anywhere on it.
+    const problem = cuePlacementProblem(state.frame, shot.cuePlacement);
+    if (problem) return { status: 'error', code: 400, reason: problem };
+    cleanShot.cuePlacement = { x: shot.cuePlacement.x, y: shot.cuePlacement.y };
   }
 
   // Shot clock: an overdue shot is scored as a miss regardless of what was sent.

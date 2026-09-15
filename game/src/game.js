@@ -1,6 +1,6 @@
 import {
   newMatch, resolveShot, resolveTimeout, advanceMatch, createSimulation,
-  chooseShot, matchHighBreak, PHYSICS, SHOT_CLOCK_MS, MAX_BREAK,
+  chooseShot, matchHighBreak, cuePlacementProblem, PHYSICS, SHOT_CLOCK_MS, MAX_BREAK,
 } from '@snooker/sim';
 import { describeOutcome } from './hud.js';
 import { haptic } from './telegram.js';
@@ -155,12 +155,15 @@ export class Game {
 
   // --- shooting ------------------------------------------------------------
 
+  /** @returns {boolean} false when the spot is illegal (the server would reject the shot). */
   placeCue(point) {
+    if (cuePlacementProblem(this.frame, point)) return false;
     this.pendingCuePlacement = point;
     const cue = this.frame.balls.find((b) => b.id === 'cue');
     cue.x = point.x;
     cue.y = point.y;
     this.controls.setCue(cue);
+    return true;
   }
 
   async takeShot(aim) {

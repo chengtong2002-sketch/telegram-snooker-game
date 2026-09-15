@@ -117,6 +117,32 @@ test('the player whose turn it is not cannot shoot', async () => {
   assert.match(res.body.error, /not your turn/);
 });
 
+test('ball in hand cannot be placed outside the D or on top of a ball', async () => {
+  const state = await call(`/api/match/${matchId}`, { token: annToken });
+  const { match } = state.body;
+  assert.equal(match.frame.inHand, true, 'the break-off is played from hand');
+  const token = Number(match.turnUserId) === Number(match.players[0]) ? annToken : benToken;
+  const red = match.frame.balls.find((b) => b.id === 'red1');
+  const brown = match.frame.balls.find((b) => b.id === 'brown');
+
+  // Two requests only: /shot is rate limited and later tests in this file need
+  // their share. The full rule is covered in shared/sim's rules tests.
+  for (const [cuePlacement, reason] of [
+    [{ x: red.x - 6, y: red.y }, /inside the D/],              // right up against the pack
+    [{ x: brown.x - 1, y: brown.y }, /touching another ball/], // in the D, on the brown
+  ]) {
+    const res = await call(`/api/match/${matchId}/shot`, {
+      method: 'POST',
+      token,
+      body: { resultId: `place-${Math.random()}`, shot: { angle: 0, power: 0.5, cuePlacement } },
+    });
+    assert.equal(res.status, 400, `accepted ${JSON.stringify(cuePlacement)}`);
+    assert.match(res.body.error, reason);
+  }
+  const shots = await getDb()('shots').where({ match_id: matchId });
+  assert.equal(shots.length, 0, 'a rejected placement does not use up the turn');
+});
+
 test('the server resolves the shot itself and returns its own outcome', async () => {
   const before = await call(`/api/match/${matchId}`, { token: annToken });
   const strikerIsAnn = Number(before.body.match.turnUserId)

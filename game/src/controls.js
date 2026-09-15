@@ -1,7 +1,5 @@
-import { BAULK_LINE_X, D_RADIUS, CENTRE_Y, BALL_RADIUS, TABLE } from '@snooker/sim';
+import { BALL_RADIUS, TABLE, inTheD } from '@snooker/sim';
 import { haptic } from './telegram.js';
-
-const inTheD = (x, y) => x <= BAULK_LINE_X && Math.hypot(x - BAULK_LINE_X, y - CENTRE_Y) <= D_RADIUS;
 
 // Finger travel (CSS px) under which a touch counts as a tap rather than a drag.
 const TAP_SLOP_PX = 10;
@@ -88,8 +86,8 @@ export class Controls {
     const x = Math.min(TABLE.width - BALL_RADIUS, Math.max(BALL_RADIUS, p.x));
     const y = Math.min(TABLE.height - BALL_RADIUS, Math.max(BALL_RADIUS, p.y));
     if (!inTheD(x, y)) return false;
-    this.onPlaceCue({ x, y });
-    return true;
+    // The game can still refuse (a ball already sits there).
+    return this.onPlaceCue({ x, y }) !== false;
   }
 
   #aimAt(clientX, clientY) {

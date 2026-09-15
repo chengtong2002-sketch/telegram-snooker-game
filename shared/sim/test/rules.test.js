@@ -3,7 +3,35 @@ import assert from 'node:assert/strict';
 import {
   newFrame, initialBalls, resolveShot, resolveTimeout, simulateShot,
   ballById, advanceMatch, newMatch, TABLE, POCKETS, BALL_RADIUS, MAX_BREAK,
+  cuePlacementProblem, BAULK_LINE_X, D_RADIUS, CENTRE_Y,
 } from '../src/index.js';
+
+test('ball in hand: only inside the D and clear of other balls', () => {
+  const frame = newFrame();
+  const brown = ballById(frame, 'brown'); // sits on the baulk line, in the D
+  assert.equal(cuePlacementProblem(frame, { x: BAULK_LINE_X - 10, y: CENTRE_Y + 12 }), null);
+  assert.equal(cuePlacementProblem(frame, { x: BAULK_LINE_X - D_RADIUS + 0.5, y: CENTRE_Y }), null,
+    'just inside the back of the D');
+  assert.match(cuePlacementProblem(frame, { x: BAULK_LINE_X + 1, y: CENTRE_Y + 12 }), /inside the D/,
+    'past the baulk line');
+  assert.match(cuePlacementProblem(frame, { x: BAULK_LINE_X - 10, y: CENTRE_Y + D_RADIUS }), /inside the D/,
+    'behind the line but outside the semicircle');
+  assert.match(cuePlacementProblem(frame, { x: TABLE.width / 2, y: CENTRE_Y }), /inside the D/);
+  assert.match(cuePlacementProblem(frame, { x: brown.x - BALL_RADIUS, y: brown.y }), /touching another ball/);
+  assert.match(cuePlacementProblem(frame, { x: Number.NaN, y: CENTRE_Y }), /numbers/);
+  assert.match(cuePlacementProblem(frame, null), /numbers/);
+});
+
+test('resolveShot refuses an illegal placement and ignores one when not in hand', () => {
+  const frame = newFrame();
+  assert.throws(() => resolveShot(frame, { angle: 0, power: 0.5, cuePlacement: { x: 300, y: CENTRE_Y } }), /inside the D/);
+
+  const lying = { ...newFrame(), inHand: false };
+  const shot = { angle: Math.PI, power: 0.05 };
+  const withBogusPlacement = resolveShot(lying, { ...shot, cuePlacement: { x: 300, y: CENTRE_Y } });
+  assert.deepEqual(withBogusPlacement.state.balls, resolveShot(lying, shot).state.balls,
+    'the cue ball plays from where it lies');
+});
 
 /** Put the cue ball and one object ball where we want them, clear the rest. */
 function sparseFrame(placements, patch = {}) {
