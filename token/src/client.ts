@@ -1,7 +1,7 @@
 import { mnemonicToPrivateKey } from '@ton/crypto';
 import { TonClient4, WalletContractV4, WalletContractV5R1 } from '@ton/ton';
 import { AssetsSDK, createApi, NoopStorage } from '@ton-community/assets-sdk';
-import type { OpenedContract, Sender } from '@ton/core';
+import type { Address, OpenedContract, Sender } from '@ton/core';
 import { network, mnemonic, walletVersion, assertNetworkConfirmed, type Network } from './env.js';
 
 type TreasuryWallet = WalletContractV4 | WalletContractV5R1;
@@ -66,7 +66,19 @@ export async function treasuryBalance(treasury: Treasury): Promise<bigint> {
   return treasury.wallet.getBalance();
 }
 
-export const explorerUrl = (net: 'testnet' | 'mainnet', address: string) =>
+/**
+ * An owner's Jetton balance, in contract units. A holder's Jetton wallet is only
+ * deployed by the first mint or transfer to it, so an address that never
+ * received any has no contract to query: that reads as 0, not an error.
+ */
+export async function jettonBalance(treasury: Treasury, master: Address, owner: Address): Promise<bigint> {
+  const wallet = await treasury.sdk.openJetton(master).getWallet(owner);
+  const { state } = await treasury.api.provider(wallet.address).getState();
+  if (state.type !== 'active') return 0n;
+  return (await wallet.getData()).balance;
+}
+
+export const explorerUrl =(net: 'testnet' | 'mainnet', address: string) =>
   `https://${net === 'testnet' ? 'testnet.' : ''}tonviewer.com/${address}`;
 
 /** Poll until the wallet's seqno advances, i.e. the message actually landed. */

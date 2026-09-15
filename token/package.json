@@ -9,6 +9,7 @@
     "mint": "tsx scripts/mint.ts",
     "info": "tsx scripts/info.ts",
     "payout": "tsx scripts/payout.ts",
+    "transfer": "tsx scripts/transfer.ts",
     "test": "node --import tsx --test \"test/**/*.test.mts\""
   },
   "dependencies": {

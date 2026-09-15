@@ -42,12 +42,18 @@ export const walletVersion = (): 'v4' | 'v5r1' => {
 
 export const jettonMaster = (): string => required('JETTON_MASTER_ADDRESS');
 
+// `KEY=` in .env is an empty string, not unset. `??` let that through, which is
+// how the testnet master ended up with image "" stored on-chain.
+const envOr = (name: string, fallback?: string) => process.env[name]?.trim() || fallback;
+
 export const jettonMeta = () => ({
-  name: process.env.JETTON_NAME ?? 'Snooker Points',
-  symbol: process.env.JETTON_SYMBOL ?? 'SNKR',
-  description: process.env.JETTON_DESCRIPTION
-    ?? 'In-game reward token for the Snooker Mini App. Earned by making breaks in PvP matches.',
-  image: process.env.JETTON_IMAGE_URL ?? undefined,
+  name: envOr('JETTON_NAME', 'Snooker Points')!,
+  symbol: envOr('JETTON_SYMBOL', 'SNKR')!,
+  description: envOr(
+    'JETTON_DESCRIPTION',
+    'In-game reward token for the Snooker Mini App. Earned by making breaks in PvP matches.',
+  )!,
+  image: envOr('JETTON_IMAGE_URL'),
   decimals: Number(process.env.JETTON_DECIMALS ?? 9),
 });
 

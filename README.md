@@ -166,10 +166,31 @@ per period is bounded by the budget the backend enforces.
 ```bash
 # testnet funds first: @testgiver_ton_bot on Telegram
 npm run deploy -w @snooker/token     # prints JETTON_MASTER_ADDRESS — put it in .env
-npm run info   -w @snooker/token     # supply, admin, explorer link
-npm run mint   -w @snooker/token -- <address> 10     # smoke test
+npm run info   -w @snooker/token     # supply, admin, stored metadata, treasury balances
+npm run info   -w @snooker/token -- <address>        # ...plus that address's balance
+npm run mint   -w @snooker/token -- <address> 10     # smoke test: mint new tokens
+npm run transfer -w @snooker/token -- <address> 10   # smoke test: move tokens the treasury holds
 npm run payout -w @snooker/token     # dry run; add -- --send to settle
 ```
+
+The testnet master is `kQBqi-yDDeYSILq9fL4nlt_SZg5OnNsfDwZgKSl3sMyUHWkV` (SNKR, 9
+decimals, on-chain metadata), admin = the W5 treasury
+`0QDzWYEn1r4XzSHoAqLqQJSSWJCApmqRZyKH3CDT5_gxSvvQ`.
+
+The payout script reads the same redemption queue the backend writes, so it needs:
+
+| Variable | Why |
+|---|---|
+| `DATABASE_URL` | the backend's database (Postgres on Railway; `PGSSL=disable` for a local Postgres) |
+| `TON_NETWORK` | `testnet` or `mainnet`; only redemptions recorded for that network are paid |
+| `TON_WALLET_MNEMONIC` | the treasury, which is the Jetton admin; only this script holds it |
+| `TON_WALLET_VERSION` | `v5r1` (default) or `v4`, matching the wallet app. Same words, different address |
+| `JETTON_MASTER_ADDRESS` | the master to mint from |
+| `JETTON_DECIMALS` | converts redemption amounts to contract units; must match the deploy (9) |
+
+The backend itself never signs or reads the chain: it only needs `TON_NETWORK` and
+`JETTON_MASTER_ADDRESS` to show players where their tokens live. Keep the mnemonic
+off the backend and bot services.
 
 Every script that can spend refuses to run against mainnet unless
 `I_UNDERSTAND_THIS_IS_MAINNET=yes` is set. Do the whole flow on testnet first.
