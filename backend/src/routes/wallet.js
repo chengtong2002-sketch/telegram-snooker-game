@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router } from '../asyncRouter.js';
 import { requireAuth } from '../auth.js';
 import { activeWallet, issueChallenge, consumeChallenge } from '@snooker/db';
 import { verifyTonProof, newProofPayload } from '../services/tonProof.js';

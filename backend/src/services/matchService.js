@@ -104,8 +104,21 @@ function participantIndex(state, userId) {
   return state.players.findIndex((p) => Number(p) === Number(userId));
 }
 
-async function persist(row, state, { status, extra = {} } = {}) {
+/** Returned when another write got to the match between our read and our write. */
+const STALE_MATCH = { status: 'error', code: 409, reason: 'the match moved on before this arrived' };
+
+class StaleMatchError extends Error {}
+
+/**
+ * Write the match back, but only if nobody else has since it was loaded:
+ * `version` must still be the one on `row`. Returns the updated row, or null
+ * when the write lost a race — the caller must then do nothing further (no
+ * notifications, no match completion), because the winner already did it.
+ * Pass `trx` to make the write part of a transaction.
+ */
+async function persist(row, state, { status, extra = {}, trx } = {}) {
   const knex = getDb();
+  const db = trx ?? knex;
   const turnUserId = state.ended ? null : state.players[state.frame.turn];
   const patch = {
     state: toJson(state),
@@ -121,14 +134,16 @@ async function persist(row, state, { status, extra = {} } = {}) {
       : (state.checkpoint ? new Date(state.checkpoint.deadline) : shotDeadline()),
     status: status ?? (state.ended ? 'completed' : 'active'),
     updated_at: knex.fn.now(),
+    version: Number(row.version) + 1,
     ...extra,
   };
   if (state.ended) {
     patch.winner_id = state.players[state.winner];
     patch.completed_at = knex.fn.now();
   }
-  await knex('matches').where({ id: row.id }).update(patch);
-  return knex('matches').where({ id: row.id }).first();
+  const changed = await db('matches').where({ id: row.id, version: row.version }).update(patch);
+  if (!changed) return null;
+  return db('matches').where({ id: row.id }).first();
 }
 
 async function onMatchComplete(row, state) {
@@ -188,6 +203,7 @@ async function announceCheckpoint(row, state) {
 async function startNextFrame(row, state) {
   delete state.checkpoint;
   const updatedRow = await persist(row, state);
+  if (!updatedRow) return null;
   await notifyYourTurn(updatedRow, state.players[state.frame.turn], {
     opponentId: state.players[1 - state.frame.turn],
     scores: state.frame.scores,
@@ -195,6 +211,18 @@ async function startNextFrame(row, state) {
     secondsToShoot: config.shotClockSeconds,
   });
   return updatedRow;
+}
+
+/** The stored outcome for a resultId already applied, or null. */
+async function duplicateShot(resultId) {
+  const dup = await getDb()('shots').where({ result_id: resultId }).first();
+  if (!dup) return null;
+  const { row, state } = await loadMatch(dup.match_id);
+  return {
+    status: 'duplicate',
+    outcome: fromJson(dup.outcome),
+    match: await publicMatchForClient(row, state),
+  };
 }
 
 /**
@@ -205,15 +233,8 @@ async function startNextFrame(row, state) {
 export async function applyShot({ matchId, userId, resultId, shot }) {
   const knex = getDb();
 
-  const dup = await knex('shots').where({ result_id: resultId }).first();
-  if (dup) {
-    const { row, state } = await loadMatch(dup.match_id);
-    return {
-      status: 'duplicate',
-      outcome: fromJson(dup.outcome),
-      match: await publicMatchForClient(row, state),
-    };
-  }
+  const dup = await duplicateShot(resultId);
+  if (dup) return dup;
 
   const loaded = await loadMatch(matchId);
   if (!loaded) return { status: 'error', code: 404, reason: 'match not found' };
@@ -257,19 +278,34 @@ export async function applyShot({ matchId, userId, resultId, shot }) {
   state = advanceMatch(state, nextFrame);
   const checkpointOpened = openCheckpointIfDue(state, frameNumber);
 
-  await knex('shots').insert({
-    result_id: resultId,
-    match_id: row.id,
-    user_id: userId,
-    frame_number: frameNumber,
-    shot_number: shotNumber,
-    shot: toJson(cleanShot),
-    outcome: toJson({ ...outcome, overdue: !!overdue, events: undefined }),
-    foul: outcome.foul,
-    points: outcome.pointsScored,
-  });
-
-  const updatedRow = await persist(row, state);
+  // The shot row and the match update commit together or not at all, so a
+  // shot that loses a race to another write leaves nothing behind.
+  let updatedRow;
+  try {
+    updatedRow = await knex.transaction(async (trx) => {
+      await trx('shots').insert({
+        result_id: resultId,
+        match_id: row.id,
+        user_id: userId,
+        frame_number: frameNumber,
+        shot_number: shotNumber,
+        shot: toJson(cleanShot),
+        outcome: toJson({ ...outcome, overdue: !!overdue, events: undefined }),
+        foul: outcome.foul,
+        points: outcome.pointsScored,
+      });
+      const written = await persist(row, state, { trx });
+      if (!written) throw new StaleMatchError();
+      return written;
+    });
+  } catch (err) {
+    // The same resultId arriving twice at once: the second insert hits the
+    // unique key once the first commits. That is a replay, not a failure.
+    const replay = await duplicateShot(resultId);
+    if (replay) return replay;
+    if (err instanceof StaleMatchError) return STALE_MATCH;
+    throw err;
+  }
 
   if (state.ended) {
     await onMatchComplete(updatedRow, state);
@@ -317,6 +353,7 @@ export async function concede({ matchId, userId, via = 'menu' }) {
 
   const state = concedeMatch(loaded.state, idx);
   const updatedRow = await persist(row, state, { status: 'completed' });
+  if (!updatedRow) return STALE_MATCH;
   logger.info({
     matchId: row.id, userId, via: CONCEDE_VIA.has(via) ? via : 'menu', framesWon: state.framesWon,
   }, 'pvp match conceded');
@@ -342,6 +379,12 @@ export async function continueMatch({ matchId, userId }) {
     return { status: 'ok', started: false, match: await publicMatchForClient(row, state) };
   }
   const updatedRow = await startNextFrame(row, state);
+  if (!updatedRow) {
+    // Someone else moved the match on first (the sweeper, or a second tap).
+    // Continuing is idempotent, so report where the match is now.
+    const now = await loadMatch(matchId);
+    return { status: 'ok', started: false, match: await publicMatchForClient(now.row, now.state) };
+  }
   return { status: 'ok', started: true, match: await publicMatchForClient(updatedRow, state) };
 }
 
@@ -363,7 +406,7 @@ export async function sweepShotClocks() {
       let state = fromJson(row.state);
       if (state.checkpoint) {
         // Nobody answered between frames: carry on, never concede for them.
-        await startNextFrame(row, state);
+        if (!(await startNextFrame(row, state))) continue; // the trailing player answered first
         logger.info({ matchId: row.id }, 'frame checkpoint timed out, next frame started');
         continue;
       }
@@ -372,6 +415,7 @@ export async function sweepShotClocks() {
       state = advanceMatch(state, nextFrame);
       const checkpointOpened = openCheckpointIfDue(state, frameNumber);
       const updatedRow = await persist(row, state);
+      if (!updatedRow) continue; // a shot or concede landed while we swept
       if (state.ended) {
         await onMatchComplete(updatedRow, state);
       } else if (checkpointOpened) {

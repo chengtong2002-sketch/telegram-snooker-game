@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router } from '../asyncRouter.js';
 import { requireInternal } from '../auth.js';
 import { userByTelegramId, upsertUser, activeWallet } from '@snooker/db';
 import { joinQueue, leaveQueue, queueStatus } from '../services/matchmaking.js';

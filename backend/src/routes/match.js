@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router } from '../asyncRouter.js';
 import rateLimit from 'express-rate-limit';
 import { requireAuth } from '../auth.js';
 import {

@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router } from '../asyncRouter.js';
 import authRoutes from './auth.js';
 import matchRoutes from './match.js';
 import walletRoutes from './wallet.js';

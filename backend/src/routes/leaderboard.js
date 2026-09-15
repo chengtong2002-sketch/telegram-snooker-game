@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router } from '../asyncRouter.js';
 import { leaderboard } from '@snooker/db';
 import { requireAuth } from '../auth.js';
 import { currentPeriod, lastClosedPeriod } from '../services/rewards.js';

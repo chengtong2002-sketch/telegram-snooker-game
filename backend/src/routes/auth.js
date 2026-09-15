@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router } from '../asyncRouter.js';
 import { verifyInitData, issueSession, requireAuth } from '../auth.js';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
