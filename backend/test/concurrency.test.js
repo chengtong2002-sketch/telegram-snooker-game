@@ -1,13 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import http from 'node:http';
 import express from 'express';
+import { useTestDatabase } from '@snooker/db/testing';
 
-const dbFile = path.join(os.tmpdir(), `snooker-concurrency-${process.pid}-${Date.now()}.sqlite`);
-process.env.DATABASE_URL = `file:${dbFile}`;
+const dropTestDatabase = await useTestDatabase('concurrency');
 process.env.ALLOW_DEV_AUTH = 'true';
 process.env.NODE_ENV = 'test';
 process.env.SHOT_CLOCK_SECONDS = '25';
@@ -37,7 +34,7 @@ test.after(async () => {
   server.close();
   botStub.close();
   await closeDb();
-  fs.rmSync(dbFile, { force: true });
+  await dropTestDatabase();
 });
 
 async function call(p, { method = 'GET', body, token } = {}) {

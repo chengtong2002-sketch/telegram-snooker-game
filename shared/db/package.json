@@ -5,7 +5,7 @@
   "private": true,
   "description": "Knex schema + accessors shared by the bot and the backend. SQLite now, Postgres by changing DATABASE_URL.",
   "main": "src/index.js",
-  "exports": { ".": "./src/index.js" },
+  "exports": { ".": "./src/index.js", "./testing": "./src/testing.js" },
   "scripts": {
     "migrate": "knex --knexfile knexfile.js migrate:latest",
     "rollback": "knex --knexfile knexfile.js migrate:rollback",

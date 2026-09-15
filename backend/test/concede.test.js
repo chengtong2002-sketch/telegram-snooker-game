@@ -1,11 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
+import { useTestDatabase } from '@snooker/db/testing';
 
-const dbFile = path.join(os.tmpdir(), `snooker-concede-${process.pid}-${Date.now()}.sqlite`);
-process.env.DATABASE_URL = `file:${dbFile}`;
+const dropTestDatabase = await useTestDatabase('concede');
 process.env.ALLOW_DEV_AUTH = 'true';
 process.env.NODE_ENV = 'test';
 process.env.SHOT_CLOCK_SECONDS = '25';
@@ -23,7 +20,7 @@ const base = `http://127.0.0.1:${server.address().port}`;
 test.after(async () => {
   server.close();
   await closeDb();
-  fs.rmSync(dbFile, { force: true });
+  await dropTestDatabase();
 });
 
 async function call(p, { method = 'GET', body, token } = {}) {

@@ -1,9 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import http from 'node:http';
-import os from 'node:os';
-import path from 'node:path';
+import { useTestDatabase } from '@snooker/db/testing';
 
 // Capture what the backend sends the bot.
 const botEvents = [];
@@ -17,8 +15,7 @@ const botStub = http.createServer((req, res) => {
 }).listen(0);
 await new Promise((r) => botStub.once('listening', r));
 
-const dbFile = path.join(os.tmpdir(), `snooker-limits-${process.pid}-${Date.now()}.sqlite`);
-process.env.DATABASE_URL = `file:${dbFile}`;
+const dropTestDatabase = await useTestDatabase('limits');
 process.env.NODE_ENV = 'test';
 process.env.ALLOW_DEV_AUTH = 'true';
 process.env.REWARD_PERIOD_KIND = 'daily';
@@ -44,7 +41,7 @@ test.after(async () => {
   server.close();
   botStub.close();
   await closeDb();
-  fs.rmSync(dbFile, { force: true });
+  await dropTestDatabase();
 });
 
 let nextTg = 100;

@@ -1,11 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
+import { useTestDatabase } from '@snooker/db/testing';
 
-const dbFile = path.join(os.tmpdir(), `snooker-settle-${process.pid}-${Date.now()}.sqlite`);
-process.env.DATABASE_URL = `file:${dbFile}`;
+const dropTestDatabase = await useTestDatabase('settle');
 
 const { getDb, migrate, closeDb } = await import('@snooker/db');
 const s = await import('../src/settlement.js');
@@ -15,7 +12,7 @@ const knex = getDb();
 
 test.after(async () => {
   await closeDb();
-  fs.rmSync(dbFile, { force: true });
+  await dropTestDatabase();
 });
 
 const [{ id: periodId }] = await knex('reward_periods').insert({

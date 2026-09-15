@@ -1,12 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
+import { useTestDatabase } from '@snooker/db/testing';
 
 // A throwaway SQLite file per run, wired up before anything imports the db.
-const dbFile = path.join(os.tmpdir(), `snooker-test-${process.pid}-${Date.now()}.sqlite`);
-process.env.DATABASE_URL = `file:${dbFile}`;
+const dropTestDatabase = await useTestDatabase('test');
 process.env.REWARD_BUDGET_TOKENS = '1000';
 process.env.REWARD_PERIOD_KIND = 'daily';
 process.env.REWARD_MAX_SHARE = '0.25';
@@ -29,7 +26,7 @@ const cara = await upsertUser({ id: 1003, first_name: 'Cara' });
 
 test.after(async () => {
   await closeDb();
-  fs.rmSync(dbFile, { force: true });
+  await dropTestDatabase();
 });
 
 const finishedMatch = (players, highBreaks) => ({
