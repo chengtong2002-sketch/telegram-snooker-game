@@ -283,4 +283,6 @@ html, body {
   }
   .rot-icon { font-size: 44px; animation: tilt 1.6s ease-in-out infinite; }
   @keyframes tilt { 50% { transform: rotate(90deg); } }
+  /* Non-table screens (wallet) are usable upright — never block them. */
+  html[data-screen] #rotate { display: none; }
 }

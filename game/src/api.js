@@ -40,12 +40,23 @@ async function request(path, { method = 'GET', body, auth = true, timeout = 12_0
   return json;
 }
 
+/**
+ * Browser dev identity. `?dev=N` (1–99) picks a distinct player, so two phones
+ * on the LAN can play PvP against each other; without it everyone is Dev 1,
+ * and the queue never pairs a player with themselves.
+ */
+function devUser() {
+  const n = Number(new URLSearchParams(window.location.search).get('dev') ?? 1);
+  const slot = Number.isInteger(n) && n >= 1 && n <= 99 ? n : 1;
+  return { id: 999_000_000 + slot, first_name: `Dev ${slot}`, username: `dev${slot}` };
+}
+
 /** Exchange Telegram initData for a session token. */
 export async function login() {
   const payload = initData()
     ? { initData: initData() }
     // Browser dev only; the backend accepts this only when ALLOW_DEV_AUTH is on.
-    : { devUser: themeUser() ?? { id: 999_000_001, first_name: 'Dev', username: 'dev' } };
+    : { devUser: themeUser() ?? devUser() };
   const res = await request('/auth/telegram', { method: 'POST', body: payload, auth: false });
   token = res.token;
   return res.user;
@@ -59,6 +70,7 @@ export const joinQueue = () => request('/match/queue', { method: 'POST' });
 export const leaveQueue = () => request('/match/queue', { method: 'DELETE' });
 export const queueStatus = () => request('/match/queue');
 export const getMatch = (id) => request(`/match/${id}`);
+export const activeMatches = () => request('/match/active');
 export const concedeMatch = (id) => request(`/match/${id}/concede`, { method: 'POST' });
 
 /**

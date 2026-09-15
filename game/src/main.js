@@ -1,5 +1,7 @@
 import { trackVisibleViewport } from './viewport.js';
-import { initTelegram, launchParams, themeUser, close as closeApp } from './telegram.js';
+import {
+  initTelegram, preferLandscape, launchParams, themeUser, close as closeApp,
+} from './telegram.js';
 import { Hud } from './hud.js';
 import { TableRenderer } from './renderer.js';
 import { Controls } from './controls.js';
@@ -74,10 +76,14 @@ function pauseMenu() {
 document.getElementById('pause').addEventListener('click', pauseMenu);
 
 async function boot() {
-  initTelegram();
+  const params = launchParams();
+  const onTable = params.screen !== 'wallet';
+  // The wallet screen is a plain sheet that works upright; only the table
+  // needs landscape (see the #rotate guard in style.css).
+  if (!onTable) document.documentElement.dataset.screen = params.screen;
+  initTelegram({ landscape: onTable });
   fitCanvas();
 
-  const params = launchParams();
   const tgUser = themeUser();
 
   hud.hint('Connecting…');
@@ -107,10 +113,32 @@ async function boot() {
   };
 
   if (params.screen === 'wallet') {
-    await openWalletScreen(hud, { onClose: () => closeApp() });
+    // Close hands over to the table rather than exiting the Mini App: players
+    // read the dimmed table behind the sheet as "the game", and expect to land
+    // there. Telegram's own close button still exits.
+    await openWalletScreen(hud, { onClose: () => leaveWalletForTable(me) });
     return;
   }
 
+  startTable(params, me);
+}
+
+/** From the standalone wallet screen to the table: their live match, or a choice. */
+async function leaveWalletForTable(me) {
+  delete document.documentElement.dataset.screen; // re-arm the landscape guard
+  preferLandscape();
+  hud.hint('Connecting…');
+  let matchId = null;
+  try {
+    matchId = (await api.activeMatches()).matches?.[0]?.id ?? null;
+  } catch {
+    // Offline or server trouble: fall through to the choice sheet.
+  }
+  hud.hint('');
+  startTable({ mode: 'pvp', matchId }, me);
+}
+
+function startTable(params, me) {
   const controls = new Controls({
     canvas,
     renderer,
@@ -132,11 +160,13 @@ async function boot() {
           onClick: async () => {
             try {
               const res = await api.joinQueue();
-              if (res.status === 'matched') window.location.search = `?mode=pvp&match=${res.matchId}`;
-              else if (res.status === 'already-playing') window.location.search = `?mode=pvp&match=${res.match.id}`;
+              if (res.status === 'matched') openMatch(res.matchId);
+              else if (res.status === 'already-playing') openMatch(res.match.id);
               else {
                 hud.closeModal();
+                hud.hint('Waiting for an opponent…');
                 hud.toast('Queued — the bot will message you when someone joins', '', 5000);
+                waitForMatch();
               }
             } catch (err) {
               hud.toast(err.message, 'foul');
@@ -150,12 +180,45 @@ async function boot() {
             startGame('practice', null, me, controls);
           },
         },
+        { label: 'Close game', onClick: () => closeApp() },
       ],
     });
     return;
   }
 
   startGame(params.mode === 'pvp' ? 'pvp' : 'practice', params.matchId, me, controls);
+}
+
+/** Reload into a match, keeping the other query params (e.g. ?dev=N). */
+function openMatch(matchId) {
+  const params = new URLSearchParams(window.location.search);
+  params.set('mode', 'pvp');
+  params.set('match', matchId);
+  window.location.search = `?${params}`;
+}
+
+/**
+ * While queued, check for a pairing and jump straight in. In Telegram the bot's
+ * "matched" message does this job, but a player who stays on the page (or is
+ * testing in a browser, with no bot) would otherwise wait forever.
+ */
+function waitForMatch() {
+  const timer = setInterval(async () => {
+    try {
+      const status = await api.queueStatus();
+      const match = status.activeMatches?.[0];
+      if (match) {
+        clearInterval(timer);
+        openMatch(match.id);
+      } else if (!status.queued) {
+        clearInterval(timer);
+        hud.hint('');
+        hud.toast('No longer in the queue', 'foul', 4000);
+      }
+    } catch {
+      // Transient network failure: try again on the next tick.
+    }
+  }, 3000);
 }
 
 async function startGame(mode, matchId, me, controls) {

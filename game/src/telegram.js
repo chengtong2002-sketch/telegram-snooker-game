@@ -4,7 +4,12 @@ const tg = window.Telegram?.WebApp ?? null;
 
 export const isTelegram = () => Boolean(tg?.initData);
 
-export function initTelegram() {
+/**
+ * @param {object} [opts]
+ * @param {boolean} [opts.landscape=true]  the table screens want landscape; the
+ *   wallet screen works in either orientation and should not lock anything.
+ */
+export function initTelegram({ landscape = true } = {}) {
   if (!tg) return;
   tg.ready();
   tg.expand();
@@ -25,7 +30,38 @@ export function initTelegram() {
   attempt(() => tg.setHeaderColor?.('#16211d'));
   attempt(() => tg.setBackgroundColor?.('#0e1512'));
   attempt(() => tg.disableVerticalSwipes?.());
-  attempt(() => tg.lockOrientation?.('landscape'));
+
+  // lockOrientation() takes no argument: it locks whatever orientation the app
+  // is in *right now*. Players open the Mini App holding the phone upright, so
+  // locking at startup pinned it to portrait and rotating did nothing — they
+  // were stuck on "Turn your phone sideways". Unlock first (Telegram can carry
+  // a lock over from an earlier session), then lock once actually landscape so
+  // tilting the phone mid-shot does not flip the table.
+  attempt(() => tg.unlockOrientation?.());
+  if (landscape) preferLandscape();
+}
+
+let landscapeWatch = false;
+
+/**
+ * The table wants landscape: lock orientation as soon as the phone is actually
+ * landscape. Called at startup for table screens, or later when a non-table
+ * screen (wallet) hands over to the table.
+ */
+export function preferLandscape() {
+  if (landscapeWatch || !isTelegram() || !tg.isVersionAtLeast?.('8.0')) return;
+  landscapeWatch = true;
+  const query = window.matchMedia('(orientation: landscape)');
+  const lockIfLandscape = () => {
+    if (!query.matches || tg.isOrientationLocked) return;
+    try {
+      tg.lockOrientation();
+    } catch {
+      // Best-effort, like the other SDK calls in initTelegram().
+    }
+  };
+  query.addEventListener('change', lockIfLandscape);
+  lockIfLandscape();
 }
 
 export const initData = () => tg?.initData ?? '';
@@ -49,7 +85,8 @@ export function launchParams() {
 }
 
 export function haptic(kind = 'light') {
-  const h = tg?.HapticFeedback;
+  // Same as initTelegram(): outside a real client the SDK warns on every call.
+  const h = isTelegram() ? tg.HapticFeedback : null;
   if (!h) return;
   try {
     if (kind === 'success' || kind === 'error' || kind === 'warning') h.notificationOccurred(kind);
@@ -77,16 +114,24 @@ export const themeUser = () => initDataUnsafe()?.user ?? null;
  * Telegram CloudStorage, promisified. Returns null when unavailable (browser
  * dev, or an old client) so callers can fall back to IndexedDB.
  */
-export const cloudStorage = tg?.CloudStorage
+// The SDK defines CloudStorage everywhere, but outside a real client (and in
+// clients older than 6.9) every method throws WebAppMethodUnsupported, so the
+// object's mere presence says nothing.
+const cloudStorageWorks = isTelegram() && (tg.isVersionAtLeast?.('6.9') ?? false) && Boolean(tg.CloudStorage);
+
+/** Call a CloudStorage method, resolving `failed` instead of throwing. */
+const callCloud = (method, args, onResult, failed) => new Promise((resolve) => {
+  try {
+    tg.CloudStorage[method](...args, (err, value) => resolve(onResult(err, value)));
+  } catch {
+    resolve(failed);
+  }
+});
+
+export const cloudStorage = cloudStorageWorks
   ? {
-    get: (key) => new Promise((resolve) => {
-      tg.CloudStorage.getItem(key, (err, value) => resolve(err ? null : value));
-    }),
-    set: (key, value) => new Promise((resolve) => {
-      tg.CloudStorage.setItem(key, value, (err) => resolve(!err));
-    }),
-    remove: (key) => new Promise((resolve) => {
-      tg.CloudStorage.removeItem(key, (err) => resolve(!err));
-    }),
+    get: (key) => callCloud('getItem', [key], (err, value) => (err ? null : value), null),
+    set: (key, value) => callCloud('setItem', [key, value], (err) => !err, false),
+    remove: (key) => callCloud('removeItem', [key], (err) => !err, false),
   }
   : null;
