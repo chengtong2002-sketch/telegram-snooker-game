@@ -3,7 +3,10 @@ import jwt from 'jsonwebtoken';
 import { config } from './config.js';
 import { upsertUser, userById } from '@snooker/db';
 
-const MAX_INITDATA_AGE_SEC = 24 * 60 * 60;
+// Telegram issues fresh initData every time the Mini App opens, so a real
+// client never needs old data. Short-lived means a leaked copy (logs, a
+// screenshot, an extension) stops working within the hour.
+export const MAX_INITDATA_AGE_SEC = 60 * 60;
 
 /**
  * Verify a Telegram WebApp initData string.

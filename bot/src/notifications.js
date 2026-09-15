@@ -25,6 +25,30 @@ function describeLastShot(lastShot) {
   return 'They came up empty.';
 }
 
+const shortAddress = (a = '') => (a.length > 14 ? `${a.slice(0, 6)}…${a.slice(-6)}` : a);
+
+/**
+ * Sent on every payout wallet change, so a player whose session was hijacked
+ * finds out while the 24h claim cooldown still protects their rewards.
+ */
+export function walletChangedText({ action, address, network }) {
+  // Underscores in a handle would open a Markdown italic and fail the send.
+  const support = config.supportHandle
+    ? `contact ${config.supportHandle.replace(/_/g, '\\_')} right away`
+    : 'contact support right away';
+  if (action === 'unlinked') {
+    return [
+      `👛 *Your payout wallet was unlinked* (\`${shortAddress(address)}\`, ${network}).`,
+      `If this wasn't you, ${support}.`,
+    ].join('\n');
+  }
+  return [
+    `👛 *Your payout wallet changed* to \`${shortAddress(address)}\` (${network}).`,
+    'Rewards cannot be claimed for 24 hours after a wallet change.',
+    `If this wasn't you, ${support} — someone may have access to your account.`,
+  ].join('\n');
+}
+
 /**
  * Small HTTP listener the backend calls when something happens that a player
  * needs to hear about. Kept in-process with the bot so only one thing holds the
@@ -108,8 +132,20 @@ export function startNotificationServer(bot) {
             `Your highest break was *${event.eligibleBreak}* — that is this match's`,
             'reward-eligible score. /status to see what it is currently worth.',
           );
+        } else if (event.rewardLimit) {
+          const { reason, breakValue, limit } = event.rewardLimit;
+          lines.push(
+            '',
+            `Your break of *${breakValue}* does not count toward rewards:`,
+            reason === 'daily-pair-cap'
+              ? `you have already had ${limit} reward-eligible matches against this opponent today.`
+              : `you have reached today's limit of ${limit} reward-eligible matches.`,
+            'You can keep playing — limits reset at 00:00 UTC.',
+          );
         }
         await bot.api.sendMessage(chatId, lines.join('\n'), { parse_mode: 'Markdown' });
+      } else if (event.type === 'wallet-changed') {
+        await bot.api.sendMessage(chatId, walletChangedText(event), { parse_mode: 'Markdown' });
       } else {
         return res.status(400).json({ error: `unknown event ${event.type}` });
       }

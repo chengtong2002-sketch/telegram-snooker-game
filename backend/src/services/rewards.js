@@ -1,8 +1,57 @@
-import { getDb, activeWallet } from '@snooker/db';
+import { getDb, activeWallet, userById } from '@snooker/db';
 import { MAX_BREAK } from '@snooker/sim';
 import { config } from '../config.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Most reward-eligible matches one player can be awarded per UTC calendar day.
+ * A match over the limit is still played and still counts for frames and the
+ * win; its break just earns nothing. Checked when the result is recorded
+ * (recordEligibleBreak), never at matchmaking.
+ */
+export const DAILY_ELIGIBLE_MATCH_CAP = 15;
+
+/** Most reward-eligible matches between the same two players per UTC calendar day. */
+export const DAILY_PAIR_MATCH_CAP = 3;
+
+/** After the payout wallet changes, claims wait this long. */
+export const WALLET_CLAIM_COOLDOWN_MS = DAY_MS;
+
+/** UTC calendar day as 'YYYY-MM-DD': the limits reset at 00:00 UTC. */
+export const utcDay = (now = new Date()) => now.toISOString().slice(0, 10);
+
+/** Whitelisted test account (REWARD_LIMIT_EXEMPT_TELEGRAM_IDS)? Keyed by Telegram id. */
+export async function isLimitExempt(userId) {
+  const exempt = config.rewards.limitExemptTelegramIds;
+  if (exempt.size === 0) return false;
+  const user = await userById(userId);
+  return Boolean(user) && exempt.has(String(user.telegram_id));
+}
+
+/**
+ * Why `userId`'s break against `opponentId` cannot be awarded on `day`, or
+ * null if it can. Only matches that actually awarded a break count toward
+ * either limit: the player's own awarded breaks for the daily cap, and every
+ * awarded break between the two of them (whoever made it) for the pairing cap.
+ */
+export async function dailyLimitReason(userId, opponentId, day) {
+  if (await isLimitExempt(userId)) return null;
+  const knex = getDb();
+  const mine = await knex('eligible_breaks')
+    .where({ user_id: userId, award_day: day })
+    .count({ n: 'id' }).first();
+  if (Number(mine?.n ?? 0) >= DAILY_ELIGIBLE_MATCH_CAP) return 'daily-match-cap';
+
+  const pair = await knex('eligible_breaks')
+    .where({ award_day: day })
+    .andWhere((q) => q
+      .where({ user_id: userId, opponent_id: opponentId })
+      .orWhere({ user_id: opponentId, opponent_id: userId }))
+    .count({ n: 'id' }).first();
+  if (Number(pair?.n ?? 0) >= DAILY_PAIR_MATCH_CAP) return 'daily-pair-cap';
+  return null;
+}
 
 /** UTC window for the configured period kind. */
 export function periodWindow(kind = config.rewards.periodKind, now = new Date()) {
@@ -34,8 +83,16 @@ export async function currentPeriod(now = new Date()) {
  * Record the one crypto-eligible break for a finished PvP match.
  * Practice matches never reach here — the caller checks crypto_eligible, and
  * the unique index on match_id makes a replay a no-op.
+ *
+ * This is where the daily limits apply: the match has already been played in
+ * full. If the break's owner is over a limit, nothing is awarded and the
+ * reason is kept on the match row.
+ *
+ * @returns {Promise<null
+ *   | {userId, breakValue, periodId}
+ *   | {userId, breakValue: 0, blockedBreak, ineligibleReason}>}
  */
-export async function recordEligibleBreak(matchRow, matchState) {
+export async function recordEligibleBreak(matchRow, matchState, { now = new Date() } = {}) {
   if (!matchRow.crypto_eligible) return null;
   const knex = getDb();
 
@@ -45,13 +102,36 @@ export async function recordEligibleBreak(matchRow, matchState) {
 
   const winnerIdx = aBreak >= bBreak ? 0 : 1;
   const userId = matchState.players[winnerIdx];
-  const period = await currentPeriod();
+  const opponentId = matchState.players[1 - winnerIdx];
 
+  // Replays return the original decision. Re-checking the limits here would
+  // count this match against itself and could flip an awarded break to capped.
+  const existing = await knex('eligible_breaks').where({ match_id: matchRow.id }).first();
+  if (existing) {
+    return { userId: existing.user_id, breakValue: existing.break_value, periodId: existing.period_id };
+  }
+  const match = await knex('matches').where({ id: matchRow.id }).first();
+  if (match?.ineligible_reason) {
+    return { userId, breakValue: 0, blockedBreak: best, ineligibleReason: match.ineligible_reason };
+  }
+
+  // No lock around count-then-insert: a player can only be in one active match
+  // at a time (joinQueue refuses otherwise), so their results cannot race.
+  const day = utcDay(now);
+  const reason = await dailyLimitReason(userId, opponentId, day);
+  if (reason) {
+    await knex('matches').where({ id: matchRow.id }).update({ ineligible_reason: reason });
+    return { userId, breakValue: 0, blockedBreak: best, ineligibleReason: reason };
+  }
+
+  const period = await currentPeriod(now);
   await knex('eligible_breaks').insert({
     match_id: matchRow.id,
     user_id: userId,
+    opponent_id: opponentId,
     period_id: period.id,
     break_value: best,
+    award_day: day,
   }).onConflict('match_id').ignore();
 
   await knex('users').where({ id: userId })
@@ -129,6 +209,19 @@ export async function redeem({ userId, periodId, requestId }) {
 
   const already = await knex('redemptions').where({ user_id: userId, period_id: periodId }).first();
   if (already) return { status: 'duplicate', redemption: already };
+
+  // A freshly changed wallet cannot receive a claim yet, so whoever changed it
+  // on a stolen session cannot cash out before the player sees the bot's notice.
+  const user = await userById(userId);
+  if (user?.wallet_changed_at && !(await isLimitExempt(userId))) {
+    const unlocksAt = new Date(user.wallet_changed_at).getTime() + WALLET_CLAIM_COOLDOWN_MS;
+    if (Date.now() < unlocksAt) {
+      return {
+        status: 'error',
+        reason: `your payout wallet changed recently — claims unlock at ${new Date(unlocksAt).toISOString()}`,
+      };
+    }
+  }
 
   const [inserted] = await knex('redemptions').insert({
     request_id: requestId,

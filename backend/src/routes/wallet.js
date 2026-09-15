@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { requireAuth } from '../auth.js';
-import { linkWallet, activeWallet, getDb, issueChallenge, consumeChallenge } from '@snooker/db';
+import { activeWallet, issueChallenge, consumeChallenge } from '@snooker/db';
 import { verifyTonProof, newProofPayload } from '../services/tonProof.js';
+import { setPayoutWallet, removePayoutWallet } from '../services/wallets.js';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
 
@@ -54,17 +55,16 @@ router.post('/link', async (req, res) => {
     });
   }
 
-  const wallet = await linkWallet(req.user.id, {
+  const { wallet, changed } = await setPayoutWallet(req.user.id, {
     address: check.address,
     network: check.network,
     publicKey: check.publicKey,
   });
-  logger.info({ userId: req.user.id, address: check.address }, 'wallet linked');
-  return res.json({ wallet: { address: wallet.address, network: wallet.network } });
+  return res.json({ wallet: { address: wallet.address, network: wallet.network }, changed });
 });
 
 router.delete('/', async (req, res) => {
-  await getDb()('wallets').where({ user_id: req.user.id }).update({ active: false });
+  await removePayoutWallet(req.user.id);
   res.json({ ok: true });
 });
 

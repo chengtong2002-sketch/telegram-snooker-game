@@ -34,5 +34,9 @@ export const notifyMatchOver = (match, userId, extra = {}) =>
 export const notifyFrameCheckpoint = (match, userId, extra = {}) =>
   notifyBot({ type: 'frame-checkpoint', matchId: match.id, userId, ...extra });
 
+/** The payout wallet was linked, changed or unlinked. Not tied to a match. */
+export const notifyWalletChanged = (userId, extra = {}) =>
+  notifyBot({ type: 'wallet-changed', userId, ...extra });
+
 export const notifyMatched = (match, userId, extra = {}) =>
   notifyBot({ type: 'matched', matchId: match.id, userId, ...extra });

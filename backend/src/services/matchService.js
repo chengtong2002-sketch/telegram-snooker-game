@@ -9,7 +9,7 @@ import { logger } from '../logger.js';
 import {
   notifyYourTurn, notifyMatchOver, notifyFrameCheckpoint,
 } from './notify.js';
-import { recordEligibleBreak } from './rewards.js';
+import { recordEligibleBreak, DAILY_ELIGIBLE_MATCH_CAP, DAILY_PAIR_MATCH_CAP } from './rewards.js';
 
 const shotDeadline = () => new Date(Date.now() + config.shotClockSeconds * 1000);
 
@@ -142,18 +142,29 @@ async function onMatchComplete(row, state) {
   }
 
   const eligible = await recordEligibleBreak(row, state);
+  const limited = eligible?.ineligibleReason ?? null;
   logger.info(
-    { matchId: row.id, winnerId, highBreak: matchHighBreak(state), eligible: !!eligible },
+    {
+      matchId: row.id, winnerId, highBreak: matchHighBreak(state), eligible: !!eligible && !limited, limited,
+    },
     'pvp match completed',
   );
 
   for (const userId of state.players) {
+    const isOwner = eligible && Number(eligible.userId) === Number(userId);
     await notifyMatchOver(row, userId, {
       won: Number(userId) === Number(winnerId),
       framesWon: state.framesWon,
       highBreak: Math.min(MAX_BREAK, matchHighBreak(state)),
-      eligibleBreak: eligible && Number(eligible.userId) === Number(userId)
-        ? eligible.breakValue : 0,
+      eligibleBreak: isOwner && !limited ? eligible.breakValue : 0,
+      // Only the player whose break was withheld needs to hear why.
+      rewardLimit: isOwner && limited
+        ? {
+          reason: limited,
+          breakValue: eligible.blockedBreak,
+          limit: limited === 'daily-pair-cap' ? DAILY_PAIR_MATCH_CAP : DAILY_ELIGIBLE_MATCH_CAP,
+        }
+        : null,
       conceded: state.concededBy != null,
       youConceded: state.concededBy != null && Number(state.players[state.concededBy]) === Number(userId),
     });

@@ -51,6 +51,11 @@ export const config = {
     maxShare: num(process.env.REWARD_MAX_SHARE, 0.25),
     minPointsToRedeem: num(process.env.REWARD_MIN_POINTS, 10),
     autoPayout: bool(process.env.REWARD_AUTO_PAYOUT, false),
+    // Test accounts (Telegram user ids, comma-separated) that skip the daily
+    // match / pairing limits and the wallet-change claim cooldown. Anything in
+    // this list can farm rewards, so keep it empty outside testnet.
+    limitExemptTelegramIds: new Set((process.env.REWARD_LIMIT_EXEMPT_TELEGRAM_IDS ?? '')
+      .split(',').map((s) => s.trim()).filter((s) => /^\d+$/.test(s))),
   },
 
   // Allows local dev without a real Telegram client.
@@ -90,6 +95,12 @@ export function productionConfigProblems(cfg = config) {
 
 export function assertProductionConfig(logger, env = process.env) {
   if (!isDeployed(env)) return;
+  if (config.rewards.limitExemptTelegramIds.size > 0) {
+    logger.warn(
+      { telegramIds: [...config.rewards.limitExemptTelegramIds], network: config.ton.network },
+      'REWARD_LIMIT_EXEMPT_TELEGRAM_IDS is set: these accounts bypass the daily reward limits and the wallet cooldown',
+    );
+  }
   const problems = productionConfigProblems();
   if (problems.length) {
     logger.error({ problems }, 'refusing to start with an unsafe production config');

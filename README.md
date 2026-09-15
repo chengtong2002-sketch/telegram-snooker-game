@@ -134,7 +134,17 @@ your payout     = your points × rate,  capped at REWARD_MAX_SHARE of the budget
 ```
 
 A player redeems once per period, needs a linked wallet, and needs at least
-`REWARD_MIN_POINTS`. Redemptions queue in the database; an operator settles them
+`REWARD_MIN_POINTS`.
+
+Two daily limits cap how fast rewards can be farmed. A player can be awarded
+at most **15** reward-eligible matches per UTC day, and at most **3** between
+the same two players. Both reset at 00:00 UTC and are checked when a match
+result is recorded, not at matchmaking: a player over a limit keeps playing
+normally, their matches just earn nothing, and the bot tells them why. After
+the payout wallet changes (including a first link) the bot messages the player
+and claims wait **24 hours**. Telegram sign-in data is accepted for one hour.
+`REWARD_LIMIT_EXEMPT_TELEGRAM_IDS` lists test accounts that skip the two limits
+and the cooldown — keep it empty outside testnet. Redemptions queue in the database; an operator settles them
 on-chain by running `npm run payout -w @snooker/token`, which does a dry run
 unless passed `--send`. Paying out is deliberately a human-run step, not
 something an HTTP request can trigger.
