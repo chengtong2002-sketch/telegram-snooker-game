@@ -7,6 +7,16 @@ const MANIFEST = import.meta.env.VITE_TONCONNECT_MANIFEST_URL
 
 let ui = null;
 
+// Payout states (token/src/settlement.ts) as a player should read them.
+// `sending`/`unconfirmed` are operator bookkeeping, not something to alarm anyone with.
+const CLAIM_LABEL = {
+  pending: 'queued',
+  sending: 'processing',
+  unconfirmed: 'processing',
+  sent: 'sent ✓',
+  failed: 'failed — contact support',
+};
+
 function tonConnect() {
   if (!ui) {
     ui = new TonConnectUI({
@@ -77,9 +87,18 @@ export async function openWalletScreen(hud, { onClose } = {}) {
   const render = async (statusLine = '') => {
     let wallet = null;
     let period = null;
+    let closed = null;
+    let history = [];
     try {
-      ({ wallet } = await api.walletInfo());
-      period = await api.rewardPeriod();
+      // Two periods matter: the open one (provisional numbers, still earning)
+      // and the last closed one, which is the only one that can be redeemed.
+      const [walletRes, current, last, hist] = await Promise.all([
+        api.walletInfo(), api.rewardPeriod(), api.rewardPeriod({ closed: true }), api.rewardHistory(),
+      ]);
+      wallet = walletRes.wallet;
+      period = current;
+      closed = last?.periodId ? last : null;
+      history = hist.redemptions ?? [];
     } catch (err) {
       hud.modal({
         title: 'Wallet',
@@ -99,11 +118,19 @@ export async function openWalletScreen(hud, { onClose } = {}) {
       `<div class="row"><span>Your share</span><b>${fmt(period?.tokens)} tokens${period?.capped ? ' (capped)' : ''}</b></div>`,
     ].join('');
 
-    const note = period?.provisional
-      ? `<p class="note">This period is still open, so the rate is provisional — it drops as
-         other players earn eligible points. Redemption unlocks once the period closes
-         ${period.endsAt ? `(${new Date(period.endsAt).toLocaleString()})` : ''}.</p>`
-      : '<p class="note">This period has closed and the rate is final.</p>';
+    const note = `<p class="note">This period is still open, so the rate is provisional — it drops
+       as other players earn eligible points. Redemption unlocks once the period closes
+       ${period?.endsAt ? `(${new Date(period.endsAt).toLocaleString()})` : ''}.</p>`;
+
+    const claim = closed && history.find((r) => r.periodId === closed.periodId);
+    const closedRows = closed && (closed.points > 0 || claim)
+      ? `<h3 style="margin:14px 0 6px;font-size:14px">Last closed period</h3>
+         <div class="row"><span>Closed</span><b>${new Date(closed.endsAt).toLocaleString()}</b></div>
+         <div class="row"><span>Your points</span><b>${closed.points} of ${closed.totalPoints}</b></div>
+         <div class="row"><span>Final rate</span><b>${fmt(closed.rate)} / point</b></div>
+         <div class="row"><span>Your reward</span><b>${fmt(closed.tokens)} tokens${closed.capped ? ' (capped)' : ''}</b></div>
+         ${claim ? `<div class="row"><span>Claim</span><b>${CLAIM_LABEL[claim.status] ?? claim.status}</b></div>` : ''}`
+      : '';
 
     const actions = [];
     if (!wallet) {
@@ -120,9 +147,9 @@ export async function openWalletScreen(hud, { onClose } = {}) {
           }
         },
       });
-    } else if (period && !period.provisional && period.tokens > 0) {
+    } else if (closed && closed.tokens > 0 && !claim) {
       actions.push({
-        label: `Redeem ${fmt(period.tokens)}`,
+        label: `Redeem ${fmt(closed.tokens)}`,
         kind: 'primary',
         onClick: async () => {
           try {
@@ -140,7 +167,7 @@ export async function openWalletScreen(hud, { onClose } = {}) {
 
     hud.modal({
       title: 'Wallet & rewards',
-      body: (statusLine ? `<p><b>${statusLine}</b></p>` : '') + rows + note,
+      body: (statusLine ? `<p><b>${statusLine}</b></p>` : '') + rows + note + closedRows,
       actions,
     });
   };

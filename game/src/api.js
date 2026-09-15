@@ -88,5 +88,6 @@ export const walletChallenge = () => request('/wallet/challenge');
 export const walletInfo = () => request('/wallet');
 export const linkWallet = (payload) => request('/wallet/link', { method: 'POST', body: payload });
 
-export const rewardPeriod = () => request('/rewards/period');
+export const rewardPeriod = ({ closed = false } = {}) => request(`/rewards/period${closed ? '?closed=1' : ''}`);
+export const rewardHistory = () => request('/rewards/history');
 export const redeem = (requestId) => request('/rewards/redeem', { method: 'POST', body: { requestId } });
