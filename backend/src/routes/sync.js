@@ -1,6 +1,6 @@
 import { Router } from '../asyncRouter.js';
 import { requireAuth } from '../auth.js';
-import { getDb, toJson } from '@snooker/db';
+import { getDb, toJson, fromJson } from '@snooker/db';
 import { applyShot } from '../services/matchService.js';
 import { logger } from '../logger.js';
 
@@ -8,13 +8,40 @@ const router = Router();
 
 const MAX_BATCH = 25;
 
+/** JSON with object keys sorted, so key order alone never reads as different content. */
+function canonical(value) {
+  return JSON.stringify(value, (_key, v) => (v && typeof v === 'object' && !Array.isArray(v)
+    ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+    : v));
+}
+
+/** Does this entry say the same thing as the result already stored under its id? */
+function sameResult(stored, { userId, kind, matchId, payload }) {
+  if (String(stored.user_id) !== String(userId) || stored.kind !== kind) return false;
+  // Practice stats are never attached to a match, so their matchId is not compared.
+  if (kind === 'shot' && String(stored.match_id ?? '') !== String(matchId ?? '')) return false;
+  return canonical(fromJson(stored.payload)) === canonical(payload ?? {});
+}
+
+const CONFLICT = {
+  status: 'rejected',
+  conflict: true,
+  reason: 'this resultId was already used for a different result; the first one stands',
+};
+
 /**
  * Drain the client's offline queue.
  *
- * Every entry carries a client-generated resultId. That id is the dedupe key:
- * replaying the same batch after a flaky reconnect produces `duplicate`, not a
- * second shot. Entries are processed in order and reported individually so the
- * client can drop the settled ones and keep retrying the rest.
+ * Every entry carries a client-generated resultId, and that id is the dedupe
+ * key. Replaying an entry unchanged (a flaky reconnect) is a `duplicate` and
+ * repeats what happened the first time, including why it was rejected. The same
+ * id with different content is a conflict: the first result stands and the new
+ * one is `rejected` with `conflict: true`, never applied and never stored in
+ * place of the original. The client drops rejected entries, so a conflict is not
+ * retried. Entries are processed in order and reported individually.
+ *
+ * Client-side timestamps (when a shot was played or queued) are ignored: the
+ * shot clock and the reward period both use the server's time of arrival.
  */
 router.post('/', requireAuth, async (req, res) => {
   const entries = Array.isArray(req.body?.results) ? req.body.results : [];
@@ -33,9 +60,16 @@ router.post('/', requireAuth, async (req, res) => {
       continue;
     }
 
+    const described = { userId: req.user.id, kind, matchId, payload };
     const seen = await knex('sync_results').where({ result_id: resultId }).first();
     if (seen) {
-      out.push({ resultId, status: 'duplicate' });
+      if (!sameResult(seen, described)) {
+        out.push({ resultId, ...CONFLICT });
+      } else if (seen.status === 'rejected') {
+        out.push({ resultId, status: 'rejected', reason: seen.note ?? undefined });
+      } else {
+        out.push({ resultId, status: 'duplicate' });
+      }
       continue;
     }
 
@@ -48,9 +82,13 @@ router.post('/', requireAuth, async (req, res) => {
           resultId,
           status: result.status === 'error' ? 'rejected' : result.status,
           reason: result.reason,
+          conflict: result.conflict || undefined,
           outcome: result.outcome,
           match: result.match,
         });
+        // A conflict must not become the stored record for an id someone else's
+        // shot already owns.
+        if (result.conflict) continue;
         await knex('sync_results').insert({
           result_id: resultId,
           user_id: req.user.id,
@@ -75,7 +113,12 @@ router.post('/', requireAuth, async (req, res) => {
           status: 'applied',
           note: 'practice is not crypto-eligible',
         }).onConflict('result_id').ignore();
-        out.push({ resultId, status: 'applied', cryptoEligible: false });
+        // Two flushes of the same id can both get past `seen`; only one insert
+        // lands. Whatever is stored now decides what this entry was.
+        const stored = await knex('sync_results').where({ result_id: resultId }).first();
+        out.push(sameResult(stored, described)
+          ? { resultId, status: 'applied', cryptoEligible: false }
+          : { resultId, ...CONFLICT });
         continue;
       }
 

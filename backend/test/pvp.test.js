@@ -174,7 +174,9 @@ test('replaying the same resultId returns the original outcome, not a second sho
   const res = await call(`/api/match/${matchId}/shot`, {
     method: 'POST',
     token: annToken,
-    body: { resultId: 'shot-1', shot: { angle: 3, power: 1 } },
+    // The identical shot. The same id with a different shot is a conflict,
+    // covered in offlineSync.test.js.
+    body: { resultId: 'shot-1', shot: { angle: -0.02, power: 0.95 } },
   });
   assert.equal(res.status, 200);
   assert.equal(res.body.status, 'duplicate');

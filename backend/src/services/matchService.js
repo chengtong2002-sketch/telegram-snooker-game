@@ -213,16 +213,43 @@ async function startNextFrame(row, state) {
   return updatedRow;
 }
 
-/** The stored outcome for a resultId already applied, or null. */
-async function duplicateShot(resultId) {
+/**
+ * Is `shot` for `matchId` the same one already stored under this resultId? The
+ * stored shot is the cleaned one, which keeps a cue placement only when the
+ * ball was in hand, so a placement is compared only when one was stored.
+ */
+function sameShot(stored, matchId, shot) {
+  const was = fromJson(stored.shot);
+  if (String(stored.match_id) !== String(matchId)) return false;
+  if (was.angle !== shot?.angle || was.power !== shot?.power) return false;
+  if (!was.cuePlacement) return true;
+  return shot?.cuePlacement?.x === was.cuePlacement.x && shot?.cuePlacement?.y === was.cuePlacement.y;
+}
+
+/**
+ * What to answer for a resultId that was already applied, or null if it was
+ * not. An exact replay is a duplicate and gets the original outcome. The same
+ * id carrying a different shot is a conflict: the first one stands, and this
+ * one is refused rather than passed off as the same result.
+ */
+async function alreadyApplied(resultId, matchId, shot) {
   const dup = await getDb()('shots').where({ result_id: resultId }).first();
   if (!dup) return null;
   const { row, state } = await loadMatch(dup.match_id);
-  return {
-    status: 'duplicate',
+  const original = {
     outcome: fromJson(dup.outcome),
     match: await publicMatchForClient(row, state),
   };
+  if (!sameShot(dup, matchId, shot)) {
+    return {
+      status: 'error',
+      code: 409,
+      conflict: true,
+      reason: 'this resultId was already used for a different shot; the first one stands',
+      ...original,
+    };
+  }
+  return { status: 'duplicate', ...original };
 }
 
 /**
@@ -233,7 +260,7 @@ async function duplicateShot(resultId) {
 export async function applyShot({ matchId, userId, resultId, shot }) {
   const knex = getDb();
 
-  const dup = await duplicateShot(resultId);
+  const dup = await alreadyApplied(resultId, matchId, shot);
   if (dup) return dup;
 
   const loaded = await loadMatch(matchId);
@@ -301,7 +328,7 @@ export async function applyShot({ matchId, userId, resultId, shot }) {
   } catch (err) {
     // The same resultId arriving twice at once: the second insert hits the
     // unique key once the first commits. That is a replay, not a failure.
-    const replay = await duplicateShot(resultId);
+    const replay = await alreadyApplied(resultId, matchId, shot);
     if (replay) return replay;
     if (err instanceof StaleMatchError) return STALE_MATCH;
     throw err;
