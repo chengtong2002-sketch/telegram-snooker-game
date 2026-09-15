@@ -1,6 +1,6 @@
 import {
   newMatch, resolveShot, resolveTimeout, advanceMatch, createSimulation,
-  chooseShot, matchHighBreak, cuePlacementProblem, PHYSICS, SHOT_CLOCK_MS, MAX_BREAK,
+  chooseShot, matchHighBreak, frameUnrecoverable, cuePlacementProblem, PHYSICS, SHOT_CLOCK_MS, MAX_BREAK,
 } from '@snooker/sim';
 import { describeOutcome } from './hud.js';
 import { haptic } from './telegram.js';
@@ -39,6 +39,10 @@ export class Game {
     this.animBalls = null;
     this.pollTimer = null;
     this.destroyed = false;
+    this.checkpointAcked = null;  // frame number the leading player already dismissed
+
+    hud.setConcede(false);
+    hud.onConcede(() => this.confirmConcede('unrecoverable'));
   }
 
   // --- lifecycle -----------------------------------------------------------
@@ -88,6 +92,8 @@ export class Game {
       highBreaks: match.highBreaks,
       ended: match.ended,
       winner: match.winner,
+      concededBy: match.concededBy ?? null,
+      checkpoint: match.checkpoint ?? null,
     };
     this.clockEndsAt = match.shotDeadline ? new Date(match.shotDeadline).getTime() : null;
   }
@@ -117,9 +123,12 @@ export class Game {
     if (this.state.ended) return this.#showMatchOver();
     clearInterval(this.pollTimer);
 
+    if (this.mode === 'pvp' && this.state.checkpoint) return this.#showCheckpoint();
+
     const frame = this.frame;
     this.controls.setCue(frame.balls.find((b) => b.id === 'cue'));
     this.hud.setFrame(frame, this.state.framesWon);
+    this.#updateConcedeButton();
 
     if (this.isMyTurn) {
       this.phase = 'aiming';
@@ -274,12 +283,25 @@ export class Game {
     try {
       const { match } = await api.getMatch(this.matchId);
       const wasMyTurn = this.isMyTurn;
+      const wasCheckpoint = this.phase === 'checkpoint';
       this.#adoptServerMatch(match);
       this.hud.setFrame(this.frame, this.state.framesWon);
+      this.#updateConcedeButton();
+      const cp = match.checkpoint;
       if (match.ended) {
         clearInterval(this.pollTimer);
         this.#showMatchOver();
-      } else if (this.isMyTurn && !wasMyTurn) {
+      } else if (cp && (!wasCheckpoint
+        || (cp.trailing === this.myIndex && this.hud.el.overlay.hidden))) {
+        // A frame just ended, or the trailing player dismissed the prompt some
+        // other way (pause menu): the decision is still theirs to make.
+        this.#showCheckpoint();
+      } else if (!cp && wasCheckpoint) {
+        clearInterval(this.pollTimer);
+        this.hud.closeModal();
+        this.hud.toast(`Frame ${this.frame.frame}`, 'good');
+        this.#beginTurn();
+      } else if (!cp && this.isMyTurn && !wasMyTurn) {
         clearInterval(this.pollTimer);
         haptic('success');
         this.hud.toast('Your shot', 'good');
@@ -325,6 +347,9 @@ export class Game {
       const { state, outcome } = resolveTimeout(this.frame);
       this.hud.toast('Shot clock — 4 to your opponent', 'foul');
       this.#applyLocalResult(state, outcome, true);
+    } else if (this.phase === 'checkpoint') {
+      // Decision window over: the server starts the next frame. Just resync.
+      this.#poll();
     } else {
       // The backend sweeper is authoritative here; just resync.
       this.controls.setEnabled(false);
@@ -333,19 +358,149 @@ export class Game {
     }
   }
 
+  // --- conceding ----------------------------------------------------------
+
+  /**
+   * Mid-frame surrender is offered only once the player cannot win the frame
+   * by potting: behind by more than every point left on the table.
+   */
+  #updateConcedeButton() {
+    const show = this.mode === 'pvp'
+      && !this.state.ended
+      && !this.state.checkpoint
+      && this.phase !== 'over'
+      && frameUnrecoverable(this.frame, this.myIndex);
+    this.hud.setConcede(show);
+  }
+
+  /** The between-frame decision: trailing player continues or concedes. */
+  #showCheckpoint() {
+    const cp = this.state.checkpoint;
+    this.phase = 'checkpoint';
+    this.controls.setEnabled(false);
+    this.controls.setPlacing(false);
+    this.hud.setConcede(false);
+    this.hud.hint(''); // any "waiting for your opponent" from the last frame is stale now
+    this.hud.setFrame(this.frame, this.state.framesWon);
+    this.clockEndsAt = new Date(cp.deadline).getTime();
+    clearInterval(this.pollTimer);
+    this.pollTimer = setInterval(() => this.#poll(), POLL_MS);
+
+    const trailing = cp.trailing === this.myIndex;
+    const secondsLeft = Math.max(0, Math.round((this.clockEndsAt - Date.now()) / 1000));
+    const last = this.state.frameHistory.at(-1);
+    const [a, b] = this.state.framesWon;
+    const rows = [
+      last ? `<div class="row"><span>Frame ${cp.frame}</span><b>${last.scores[0]}–${last.scores[1]}</b></div>` : '',
+      `<div class="row"><span>Match</span><b>${a}–${b}</b></div>`,
+    ].join('');
+
+    if (!trailing) {
+      if (this.checkpointAcked === cp.frame) {
+        this.hud.closeModal();
+        this.hud.hint('Waiting for your opponent to continue…');
+        return;
+      }
+      this.hud.modal({
+        title: `Frame ${cp.frame} complete`,
+        body: `<p>Continue to frame ${cp.frame + 1}?</p>${rows}
+          <p class="note">Your opponent can continue or concede. Frame ${cp.frame + 1} starts
+          when they continue, or automatically in ${secondsLeft} seconds.</p>`,
+        actions: [{
+          label: 'Continue',
+          kind: 'primary',
+          onClick: () => {
+            this.checkpointAcked = cp.frame;
+            api.continueMatch(this.matchId).catch(() => {}); // acknowledgement only
+            this.#showCheckpoint();
+          },
+        }],
+      });
+      return;
+    }
+
+    this.hud.modal({
+      title: `Frame ${cp.frame} complete`,
+      body: `<p>Continue to frame ${cp.frame + 1}?</p>${rows}
+        <p class="note">If you concede, the match ends now at ${a}–${b} and your opponent is
+        recorded as the winner. <b>Breaks you've already made still count</b> — conceding doesn't
+        cancel them, and if yours is the highest break of this match it stays reward-eligible.</p>
+        <p class="note">Frame ${cp.frame + 1} starts automatically in ${secondsLeft} seconds.</p>`,
+      actions: [
+        { label: 'Continue', kind: 'primary', onClick: () => this.#continueToNextFrame() },
+        { label: 'Concede', kind: 'danger', onClick: () => this.confirmConcede('checkpoint') },
+      ],
+    });
+  }
+
+  async #continueToNextFrame() {
+    try {
+      const { match } = await api.continueMatch(this.matchId);
+      this.#adoptServerMatch(match);
+      if (match.checkpoint) return this.#showCheckpoint();
+      clearInterval(this.pollTimer);
+      this.hud.closeModal();
+      return this.#beginTurn();
+    } catch (err) {
+      return this.hud.toast(err.message, 'foul', 4000);
+    }
+  }
+
+  /**
+   * Ask before conceding. Used by the mid-frame button, the checkpoint and the
+   * pause menu. The server keeps every break already made, so say so.
+   *
+   * @param {'unrecoverable'|'checkpoint'|'menu'} via
+   */
+  confirmConcede(via) {
+    if (this.mode !== 'pvp' || !this.state || this.state.ended) return;
+    const back = () => (this.phase === 'checkpoint' ? this.#showCheckpoint() : this.hud.closeModal());
+    const [a, b] = this.state.framesWon;
+    this.hud.modal({
+      title: 'Concede this match?',
+      body: `<p>Your opponent will be recorded as the winner.</p>
+        <div class="row"><span>Match ends at</span><b>${a}–${b}</b></div>
+        <p class="note"><b>Your breaks still count.</b> Conceding only decides who wins the match.
+        It doesn't cancel any break you've already made — if yours is the highest break of this
+        match, it stays reward-eligible.</p>`,
+      actions: [
+        {
+          label: 'Confirm',
+          kind: 'danger',
+          onClick: async () => {
+            try {
+              const { match } = await api.concedeMatch(this.matchId, via);
+              this.#adoptServerMatch(match);
+              this.#showMatchOver();
+            } catch (err) {
+              this.hud.toast(err.message, 'foul', 4000);
+            }
+          },
+        },
+        { label: 'Cancel', onClick: back },
+      ],
+    });
+  }
+
   // --- end of match --------------------------------------------------------
 
   #showMatchOver() {
     this.phase = 'over';
     this.controls.setEnabled(false);
+    this.hud.setConcede(false);
     clearInterval(this.pollTimer);
     this.hud.setClock(null);
+    this.hud.hint('');
 
     const won = this.state.winner === this.myIndex;
     const best = Math.min(MAX_BREAK, matchHighBreak(this.state));
     const myBest = Math.min(MAX_BREAK, this.state.highBreaks[this.myIndex]);
+    const conceded = this.state.concededBy != null;
 
     const rows = [
+      conceded
+        ? `<div class="row"><span>Result</span><b>${this.state.concededBy === this.myIndex ? 'You conceded' : 'Your opponent conceded'}</b></div>`
+        : '',
       `<div class="row"><span>Frames</span><b>${this.state.framesWon[0]}–${this.state.framesWon[1]}</b></div>`,
       `<div class="row"><span>Your highest break</span><b>${myBest}</b></div>`,
       `<div class="row"><span>Match highest break</span><b>${best}</b></div>`,

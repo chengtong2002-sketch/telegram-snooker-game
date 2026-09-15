@@ -26,9 +26,9 @@ export function menuKeyboard() {
   return kb;
 }
 
-export function matchKeyboard(matchId) {
+export function matchKeyboard(matchId, label = '🎱 Take your shot') {
   const kb = new InlineKeyboard();
-  if (canOpenGame()) kb.webApp('🎱 Take your shot', gameLink({ mode: 'pvp', match: matchId }));
+  if (canOpenGame()) kb.webApp(label, gameLink({ mode: 'pvp', match: matchId }));
   return kb;
 }
 

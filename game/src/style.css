@@ -203,6 +203,19 @@ html, body {
   box-shadow: 0 4px 14px rgba(0,0,0,.45);
   cursor: pointer;
 }
+.concede {
+  flex: 0 0 auto;
+  min-height: 38px;
+  border: 1px solid var(--danger); border-radius: 12px;
+  background: transparent; color: var(--danger);
+  font-weight: 700; font-size: 13px;
+  cursor: pointer;
+}
+.concede:active { background: rgba(227,92,77,.15); }
+/* An id or class with its own display would outrank the UA's [hidden] rule
+   (see #overlay) — keep the guard explicit. */
+.concede[hidden] { display: none; }
+
 .shoot:disabled { background: #2c3a34; color: var(--muted); box-shadow: none; }
 .shoot:active:not(:disabled) { transform: translateY(1px); }
 

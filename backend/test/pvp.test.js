@@ -252,7 +252,7 @@ test('practice results sync but are explicitly not crypto-eligible', async () =>
   assert.equal(ann.best_break, 0);
 });
 
-test('conceding ends the match and hands the frames to the opponent', async () => {
+test('conceding ends the match with the opponent as winner', async () => {
   const res = await call(`/api/match/${matchId}/concede`, { method: 'POST', token: annToken });
   assert.equal(res.status, 200);
   assert.equal(res.body.match.ended, true);

@@ -66,7 +66,9 @@ export function startNotificationServer(bot) {
           { parse_mode: 'Markdown', reply_markup: event.yourTurn ? kb : undefined },
         );
       } else if (event.type === 'your-turn') {
-        const detail = describeLastShot(event.lastShot);
+        const detail = event.newFrame
+          ? `Frame ${event.newFrame} is racked — you break.`
+          : describeLastShot(event.lastShot);
         await bot.api.sendMessage(
           chatId,
           [
@@ -77,11 +79,29 @@ export function startNotificationServer(bot) {
           ].filter(Boolean).join('\n'),
           { parse_mode: 'Markdown', reply_markup: kb },
         );
+      } else if (event.type === 'frame-checkpoint') {
+        const score = `${event.framesWon?.[0] ?? 0}–${event.framesWon?.[1] ?? 0}`;
+        const text = event.trailing
+          ? [
+            `🎱 *Frame ${event.frame} complete* — your opponent leads ${score}.`,
+            `Continue to frame ${event.frame + 1}, or concede the match?`,
+            `Frame ${event.frame + 1} starts automatically in ${event.seconds}s if you do not choose.`,
+            'Conceding never cancels a break you have already made.',
+          ]
+          : [
+            `🎱 *Frame ${event.frame} is yours* — you lead ${score}.`,
+            `Your opponent can continue or concede. Frame ${event.frame + 1} starts within ${event.seconds}s.`,
+          ];
+        await bot.api.sendMessage(chatId, text.join('\n'), {
+          parse_mode: 'Markdown',
+          reply_markup: event.trailing && canOpenGame() ? matchKeyboard(event.matchId, '🎱 Continue or concede') : undefined,
+        });
       } else if (event.type === 'match-over') {
-        const lines = [
-          event.won ? '🏆 *You won the match.*' : 'Match over — your opponent took it.',
-          `Frames ${event.framesWon?.[0] ?? 0}–${event.framesWon?.[1] ?? 0}.`,
-        ];
+        let headline = event.won ? '🏆 *You won the match.*' : 'Match over — your opponent took it.';
+        if (event.conceded) {
+          headline = event.youConceded ? 'You conceded the match.' : '🏆 *You won — your opponent conceded.*';
+        }
+        const lines = [headline, `Frames ${event.framesWon?.[0] ?? 0}–${event.framesWon?.[1] ?? 0}.`];
         if (event.eligibleBreak > 0) {
           lines.push(
             '',

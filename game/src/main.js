@@ -56,16 +56,9 @@ function pauseMenu() {
         ? [{
           label: 'Concede',
           kind: 'danger',
-          onClick: async () => {
-            try {
-              await api.concedeMatch(game.matchId);
-              hud.closeModal();
-              hud.toast('You conceded the match', 'foul');
-              closeApp();
-            } catch (err) {
-              hud.toast(err.message, 'foul');
-            }
-          },
+          // Same confirmation as the in-game paths, including the reassurance
+          // that breaks already made still count.
+          onClick: () => game.confirmConcede('menu'),
         }]
         : []),
       { label: 'Close game', onClick: () => closeApp() },

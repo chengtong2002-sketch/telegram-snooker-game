@@ -71,7 +71,9 @@ export const leaveQueue = () => request('/match/queue', { method: 'DELETE' });
 export const queueStatus = () => request('/match/queue');
 export const getMatch = (id) => request(`/match/${id}`);
 export const activeMatches = () => request('/match/active');
-export const concedeMatch = (id) => request(`/match/${id}/concede`, { method: 'POST' });
+/** @param {'unrecoverable'|'checkpoint'|'menu'} via  which button it came from (logs only) */
+export const concedeMatch = (id, via = 'menu') => request(`/match/${id}/concede`, { method: 'POST', body: { via } });
+export const continueMatch = (id) => request(`/match/${id}/continue`, { method: 'POST' });
 
 /**
  * Submit a shot. Only what the player did is sent — angle and power. The server

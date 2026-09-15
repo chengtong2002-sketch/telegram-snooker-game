@@ -9,6 +9,7 @@
     "build": "vite build",
     "preview": "vite preview --host",
     "smoke": "node test/drive-practice.mjs",
+    "smoke:concede": "node test/drive-concede.mjs",
     "start": "serve -s dist --no-port-switching"
   },
   "dependencies": {

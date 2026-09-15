@@ -2,7 +2,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { requireAuth } from '../auth.js';
 import {
-  loadMatch, applyShot, concede, publicMatchForClient, activeMatchesFor,
+  loadMatch, applyShot, concede, continueMatch, publicMatchForClient, activeMatchesFor,
 } from '../services/matchService.js';
 import { joinQueue, leaveQueue, queueStatus } from '../services/matchmaking.js';
 
@@ -60,8 +60,20 @@ router.post('/:id/shot', shotLimiter, async (req, res) => {
   return res.json(result);
 });
 
+/** End the match now, at the current frame score. `via` is for logs only. */
 router.post('/:id/concede', async (req, res) => {
-  const result = await concede({ matchId: req.params.id, userId: req.user.id });
+  const result = await concede({
+    matchId: req.params.id, userId: req.user.id, via: req.body?.via,
+  });
+  if (result.status === 'error') {
+    return res.status(result.code ?? 400).json({ error: result.reason });
+  }
+  return res.json(result);
+});
+
+/** Between frames: carry on to the next frame. */
+router.post('/:id/continue', async (req, res) => {
+  const result = await continueMatch({ matchId: req.params.id, userId: req.user.id });
   if (result.status === 'error') {
     return res.status(result.code ?? 400).json({ error: result.reason });
   }

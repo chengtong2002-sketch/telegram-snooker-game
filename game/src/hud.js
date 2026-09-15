@@ -16,7 +16,7 @@ export class Hud {
       scoreA: $('score-a'), scoreB: $('score-b'),
       framesA: $('frames-a'), framesB: $('frames-b'),
       clock: $('clock'), ballOn: $('ballon'), breakLine: $('breakline'),
-      toast: $('toast'), hint: $('hint'), shoot: $('shoot'),
+      toast: $('toast'), hint: $('hint'), shoot: $('shoot'), concede: $('concede'),
       power: $('power'), powerFill: $('power-fill'), powerLabel: $('power-label'),
       overlay: $('overlay'), overlayTitle: $('overlay-title'),
       overlayBody: $('overlay-body'), overlayActions: $('overlay-actions'),
@@ -70,6 +70,15 @@ export class Hud {
 
   setShootEnabled(enabled) {
     this.el.shoot.disabled = !enabled;
+  }
+
+  /** Show or hide the mid-frame Concede button. The handler is set by the Game. */
+  setConcede(visible) {
+    this.el.concede.hidden = !visible;
+  }
+
+  onConcede(handler) {
+    this.el.concede.onclick = handler;
   }
 
   hint(text) {

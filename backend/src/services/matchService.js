@@ -1,15 +1,41 @@
 import { v4 as uuid } from 'uuid';
 import { getDb, toJson, fromJson, toBool } from '@snooker/db';
 import {
-  newMatch, resolveShot, resolveTimeout, advanceMatch, matchHighBreak,
+  newMatch, resolveShot, resolveTimeout, advanceMatch, matchHighBreak, concedeMatch,
   cuePlacementProblem, MAX_BREAK,
 } from '@snooker/sim';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
-import { notifyYourTurn, notifyMatchOver } from './notify.js';
+import {
+  notifyYourTurn, notifyMatchOver, notifyFrameCheckpoint,
+} from './notify.js';
 import { recordEligibleBreak } from './rewards.js';
 
 const shotDeadline = () => new Date(Date.now() + config.shotClockSeconds * 1000);
+
+/**
+ * How long the trailing player has to choose Continue or Concede between
+ * frames. If they say nothing the next frame starts — the server never
+ * concedes on a player's behalf.
+ */
+export const CHECKPOINT_MS = 60_000;
+
+/**
+ * After a frame ends with one player ahead (1-0 / 0-1), hold the match before
+ * the next frame so the trailing player can continue or concede. A level score
+ * (1-1) goes straight into the decider: nobody is trailing.
+ */
+function openCheckpointIfDue(state, previousFrameNumber) {
+  const frameEnded = !state.ended && state.frame.frame !== previousFrameNumber;
+  const [a, b] = state.framesWon;
+  if (!frameEnded || a === b) return false;
+  state.checkpoint = {
+    frame: previousFrameNumber,
+    trailing: a < b ? 0 : 1,
+    deadline: new Date(Date.now() + CHECKPOINT_MS).toISOString(),
+  };
+  return true;
+}
 
 const displayName = (u) => (u?.username ? `@${u.username}` : (u?.first_name ?? 'Player'));
 
@@ -35,6 +61,8 @@ export function publicMatch(row, state) {
     frame: state.frame,
     ended: state.ended,
     winner: state.winner,
+    concededBy: state.concededBy ?? null,
+    checkpoint: state.checkpoint ?? null,
     turnUserId: row.turn_user_id,
     shotDeadline: row.shot_deadline,
     shotClockSeconds: config.shotClockSeconds,
@@ -87,7 +115,10 @@ async function persist(row, state, { status, extra = {} } = {}) {
     frames_won_b: state.framesWon[1],
     high_break_a: state.highBreaks[0],
     high_break_b: state.highBreaks[1],
-    shot_deadline: state.ended ? null : shotDeadline(),
+    // During a checkpoint the deadline is the decision window, so the sweeper
+    // auto-continues it instead of charging anyone a shot-clock foul.
+    shot_deadline: state.ended ? null
+      : (state.checkpoint ? new Date(state.checkpoint.deadline) : shotDeadline()),
     status: status ?? (state.ended ? 'completed' : 'active'),
     updated_at: knex.fn.now(),
     ...extra,
@@ -123,8 +154,36 @@ async function onMatchComplete(row, state) {
       highBreak: Math.min(MAX_BREAK, matchHighBreak(state)),
       eligibleBreak: eligible && Number(eligible.userId) === Number(userId)
         ? eligible.breakValue : 0,
+      conceded: state.concededBy != null,
+      youConceded: state.concededBy != null && Number(state.players[state.concededBy]) === Number(userId),
     });
   }
+}
+
+/** Tell both players a frame checkpoint is waiting. */
+async function announceCheckpoint(row, state) {
+  const { checkpoint } = state;
+  for (const [idx, userId] of state.players.entries()) {
+    await notifyFrameCheckpoint(row, userId, {
+      frame: checkpoint.frame,
+      framesWon: state.framesWon,
+      trailing: idx === checkpoint.trailing,
+      seconds: Math.round(CHECKPOINT_MS / 1000),
+    });
+  }
+}
+
+/** Turn a pending checkpoint into the next frame: clear it and start the clock. */
+async function startNextFrame(row, state) {
+  delete state.checkpoint;
+  const updatedRow = await persist(row, state);
+  await notifyYourTurn(updatedRow, state.players[state.frame.turn], {
+    opponentId: state.players[1 - state.frame.turn],
+    scores: state.frame.scores,
+    newFrame: state.frame.frame,
+    secondsToShoot: config.shotClockSeconds,
+  });
+  return updatedRow;
 }
 
 /**
@@ -154,6 +213,9 @@ export async function applyShot({ matchId, userId, resultId, shot }) {
 
   const idx = participantIndex(state, userId);
   if (idx === -1) return { status: 'error', code: 403, reason: 'not a participant' };
+  if (state.checkpoint) {
+    return { status: 'error', code: 409, reason: 'waiting for the between-frame decision' };
+  }
   if (idx !== state.frame.turn) return { status: 'error', code: 409, reason: 'not your turn' };
 
   // Must be actual finite numbers. Number() would turn null into 0, which is a
@@ -182,6 +244,7 @@ export async function applyShot({ matchId, userId, resultId, shot }) {
   const frameNumber = state.frame.frame;
   const shotNumber = state.frame.shotNumber + 1;
   state = advanceMatch(state, nextFrame);
+  const checkpointOpened = openCheckpointIfDue(state, frameNumber);
 
   await knex('shots').insert({
     result_id: resultId,
@@ -199,7 +262,11 @@ export async function applyShot({ matchId, userId, resultId, shot }) {
 
   if (state.ended) {
     await onMatchComplete(updatedRow, state);
-  } else if (outcome.turnPassed) {
+  } else if (checkpointOpened) {
+    await announceCheckpoint(updatedRow, state);
+  } else if (state.frame.turn !== idx) {
+    // Turn passed — or a frame ended level (1-1) and the other player breaks
+    // the decider, which outcome.turnPassed alone does not cover.
     await notifyYourTurn(updatedRow, state.players[state.frame.turn], {
       opponentId: state.players[1 - state.frame.turn],
       scores: state.frame.scores,
@@ -221,24 +288,50 @@ export async function applyShot({ matchId, userId, resultId, shot }) {
   };
 }
 
-/** Concede the match. The opponent takes the remaining frames. */
-export async function concede({ matchId, userId }) {
+const CONCEDE_VIA = new Set(['unrecoverable', 'checkpoint', 'menu']);
+
+/**
+ * Concede the match. It ends immediately at the current frame score, with the
+ * opponent as the winner. Breaks already made — by either player, including in
+ * the unfinished frame — are kept and go through the normal reward check.
+ */
+export async function concede({ matchId, userId, via = 'menu' }) {
   const loaded = await loadMatch(matchId);
   if (!loaded) return { status: 'error', code: 404, reason: 'match not found' };
   const { row } = loaded;
-  const state = structuredClone(loaded.state);
+  if (row.status !== 'active') return { status: 'error', code: 409, reason: 'match is not active' };
+
+  const idx = participantIndex(loaded.state, userId);
+  if (idx === -1) return { status: 'error', code: 403, reason: 'not a participant' };
+
+  const state = concedeMatch(loaded.state, idx);
+  const updatedRow = await persist(row, state, { status: 'completed' });
+  logger.info({
+    matchId: row.id, userId, via: CONCEDE_VIA.has(via) ? via : 'menu', framesWon: state.framesWon,
+  }, 'pvp match conceded');
+  await onMatchComplete(updatedRow, state);
+  return { status: 'ok', match: await publicMatchForClient(updatedRow, state) };
+}
+
+/**
+ * Answer the between-frame checkpoint with "continue". Only the trailing
+ * player's answer starts the next frame; the leader's is an acknowledgement.
+ * Idempotent: continuing when nothing is pending just returns the match.
+ */
+export async function continueMatch({ matchId, userId }) {
+  const loaded = await loadMatch(matchId);
+  if (!loaded) return { status: 'error', code: 404, reason: 'match not found' };
+  const { row, state } = loaded;
   if (row.status !== 'active') return { status: 'error', code: 409, reason: 'match is not active' };
 
   const idx = participantIndex(state, userId);
   if (idx === -1) return { status: 'error', code: 403, reason: 'not a participant' };
 
-  state.ended = true;
-  state.winner = 1 - idx;
-  state.framesWon[1 - idx] = Math.max(state.framesWon[1 - idx], 2);
-
-  const updatedRow = await persist(row, state, { status: 'completed' });
-  await onMatchComplete(updatedRow, state);
-  return { status: 'ok', match: await publicMatchForClient(updatedRow, state) };
+  if (!state.checkpoint || idx !== state.checkpoint.trailing) {
+    return { status: 'ok', started: false, match: await publicMatchForClient(row, state) };
+  }
+  const updatedRow = await startNextFrame(row, state);
+  return { status: 'ok', started: true, match: await publicMatchForClient(updatedRow, state) };
 }
 
 /**
@@ -257,11 +350,21 @@ export async function sweepShotClocks() {
   for (const row of overdue) {
     try {
       let state = fromJson(row.state);
+      if (state.checkpoint) {
+        // Nobody answered between frames: carry on, never concede for them.
+        await startNextFrame(row, state);
+        logger.info({ matchId: row.id }, 'frame checkpoint timed out, next frame started');
+        continue;
+      }
+      const frameNumber = state.frame.frame;
       const { state: nextFrame } = resolveTimeout(state.frame);
       state = advanceMatch(state, nextFrame);
+      const checkpointOpened = openCheckpointIfDue(state, frameNumber);
       const updatedRow = await persist(row, state);
       if (state.ended) {
         await onMatchComplete(updatedRow, state);
+      } else if (checkpointOpened) {
+        await announceCheckpoint(updatedRow, state);
       } else {
         await notifyYourTurn(updatedRow, state.players[state.frame.turn], {
           opponentId: state.players[1 - state.frame.turn],
