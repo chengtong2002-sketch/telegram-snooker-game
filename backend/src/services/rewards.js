@@ -1,4 +1,6 @@
-import { getDb, activeWallet, userById, toBool } from '@snooker/db';
+import {
+  getDb, activeWallet, userById, toBool, isPostgres,
+} from '@snooker/db';
 import { MAX_BREAK } from '@snooker/sim';
 import { config } from '../config.js';
 
@@ -22,10 +24,10 @@ export const WALLET_CLAIM_COOLDOWN_MS = DAY_MS;
 export const utcDay = (now = new Date()) => now.toISOString().slice(0, 10);
 
 /** Whitelisted test account (REWARD_LIMIT_EXEMPT_TELEGRAM_IDS)? Keyed by Telegram id. */
-export async function isLimitExempt(userId) {
+export async function isLimitExempt(userId, db = getDb()) {
   const exempt = config.rewards.limitExemptTelegramIds;
   if (exempt.size === 0) return false;
-  const user = await userById(userId);
+  const user = await db('users').where({ id: userId }).first();
   return Boolean(user) && exempt.has(String(user.telegram_id));
 }
 
@@ -35,9 +37,9 @@ export async function isLimitExempt(userId) {
  * either limit: the player's own awarded breaks for the daily cap, and every
  * awarded break between the two of them (whoever made it) for the pairing cap.
  */
-export async function dailyLimitReason(userId, opponentId, day) {
-  if (await isLimitExempt(userId)) return null;
-  const knex = getDb();
+export async function dailyLimitReason(userId, opponentId, day, db = getDb()) {
+  if (await isLimitExempt(userId, db)) return null;
+  const knex = db;
   const mine = await knex('eligible_breaks')
     .where({ user_id: userId, award_day: day })
     .count({ n: 'id' }).first();
@@ -67,16 +69,83 @@ export function periodWindow(kind = config.rewards.periodKind, now = new Date())
   return { starts_at: start, ends_at: new Date(start.getTime() + DAY_MS) };
 }
 
-export async function currentPeriod(now = new Date()) {
-  const knex = getDb();
+export async function currentPeriod(now = new Date(), db = getDb()) {
   const kind = config.rewards.periodKind;
   const { starts_at, ends_at } = periodWindow(kind, now);
-  const existing = await knex('reward_periods').where({ kind, starts_at }).first();
+  const existing = await db('reward_periods').where({ kind, starts_at }).first();
   if (existing) return existing;
-  await knex('reward_periods').insert({
+  await db('reward_periods').insert({
     kind, starts_at, ends_at, budget_tokens: config.rewards.budgetTokens,
   }).onConflict(['kind', 'starts_at']).ignore();
-  return knex('reward_periods').where({ kind, starts_at }).first();
+  return db('reward_periods').where({ kind, starts_at }).first();
+}
+
+/**
+ * Lock a reward period row for the rest of transaction `trx`. Awarding a break
+ * and storing a period's rate both take this lock, so they cannot interleave.
+ * SQLite has no row locks and needs none: its single connection already runs
+ * one transaction at a time.
+ */
+const lockPeriod = (trx, where) => {
+  const q = trx('reward_periods').where(where);
+  return (isPostgres() ? q.forUpdate() : q).first();
+};
+
+/**
+ * THE TIMESTAMP RULE. A result belongs to the reward period containing the
+ * server's time when the result is recorded (the write that completes the
+ * match) — not when the match started, not when a shot was played or queued on
+ * the client, whose clock is not trusted. A match that straddles a period
+ * boundary counts in the period it finishes in.
+ *
+ * One exception keeps a stored rate true: if that period's rate has already been
+ * stored (another replica's clock ran slightly ahead, or this write computed its
+ * time just before close and lands just after), the result goes to the next
+ * period whose rate is not stored yet. A closed period never gains points.
+ *
+ * Returns that period, locked for `trx`.
+ */
+async function openPeriodForResult(trx, now) {
+  let at = now;
+  for (let hop = 0; hop < 4; hop += 1) {
+    const period = await currentPeriod(at, trx);
+    const locked = await lockPeriod(trx, { id: period.id });
+    if (!toBool(locked.finalized)) return locked;
+    at = new Date(locked.ends_at);
+  }
+  throw new Error('no reward period is open for this result');
+}
+
+const floor9 = (x) => Math.floor(x * 1e9 + 1e-6) / 1e9;
+
+/**
+ * Store a closed period's rate and total, once. From then on every quote and
+ * claim for the period uses the stored numbers, and no result can be added to it
+ * (see openPeriodForResult). Returns the period row, or null if the period does
+ * not exist or has not ended by `now`.
+ *
+ * The rate is rounded down to 9 decimals so that every player's share, summed,
+ * never comes to more than the budget.
+ */
+export async function finalizePeriod(periodId, { now = new Date() } = {}) {
+  return getDb().transaction(async (trx) => {
+    const period = await lockPeriod(trx, { id: periodId });
+    if (!period) return null;
+    if (toBool(period.finalized)) return period;
+    if (new Date(period.ends_at).getTime() > now.getTime()) return null;
+    // Summed after taking the lock: a result that was mid-write when this began
+    // has committed by now, so it is counted rather than missed.
+    const row = await trx('eligible_breaks').where({ period_id: periodId })
+      .sum({ points: 'break_value' }).first();
+    const total = Number(row?.points ?? 0);
+    const rate = total > 0 ? floor9(Number(period.budget_tokens) / total) : 0;
+    await trx('reward_periods').where({ id: periodId, finalized: false }).update({
+      finalized: true,
+      total_eligible_points: total,
+      rate: rate.toFixed(9),
+    });
+    return trx('reward_periods').where({ id: periodId }).first();
+  });
 }
 
 /**
@@ -118,46 +187,66 @@ export async function recordEligibleBreak(matchRow, matchState, { now = new Date
     return { userId, breakValue: 0, blockedBreak: best, ineligibleReason: match.ineligible_reason };
   }
 
-  // No lock around count-then-insert: a player can only be in one active match
-  // at a time (joinQueue refuses otherwise), so their results cannot race.
-  const day = utcDay(now);
-  const reason = await dailyLimitReason(userId, opponentId, day);
-  if (reason) {
-    await knex('matches').where({ id: matchRow.id }).update({ ineligible_reason: reason });
-    return { userId, breakValue: 0, blockedBreak: best, ineligibleReason: reason };
-  }
+  // The period row stays locked until this commits, so a close cannot store a
+  // rate that misses this break, and this break cannot land after one has been.
+  // The daily limits count inside the same transaction. (Count-then-insert
+  // needs no lock of its own: a player is only ever in one active match, since
+  // joinQueue refuses otherwise, so their results cannot race each other.)
+  return knex.transaction(async (trx) => {
+    const period = await openPeriodForResult(trx, now);
+    // Moved forward past a stored period: count the day that period starts on.
+    const day = utcDay(new Date(Math.max(now.getTime(), new Date(period.starts_at).getTime())));
+    const reason = await dailyLimitReason(userId, opponentId, day, trx);
+    if (reason) {
+      await trx('matches').where({ id: matchRow.id }).update({ ineligible_reason: reason });
+      return { userId, breakValue: 0, blockedBreak: best, ineligibleReason: reason };
+    }
 
-  const period = await currentPeriod(now);
-  await knex('eligible_breaks').insert({
-    match_id: matchRow.id,
-    user_id: userId,
-    opponent_id: opponentId,
-    period_id: period.id,
-    break_value: best,
-    award_day: day,
-  }).onConflict('match_id').ignore();
+    await trx('eligible_breaks').insert({
+      match_id: matchRow.id,
+      user_id: userId,
+      opponent_id: opponentId,
+      period_id: period.id,
+      break_value: best,
+      award_day: day,
+    }).onConflict('match_id').ignore();
 
-  await knex('users').where({ id: userId })
-    .increment('lifetime_eligible_points', best)
-    .update({ updated_at: knex.fn.now() });
-  await knex('users').where({ id: userId }).where('best_break', '<', best)
-    .update({ best_break: best });
+    await trx('users').where({ id: userId })
+      .increment('lifetime_eligible_points', best)
+      .update({ updated_at: knex.fn.now() });
+    await trx('users').where({ id: userId }).where('best_break', '<', best)
+      .update({ best_break: best });
 
-  return { userId, breakValue: best, periodId: period.id };
+    return { userId, breakValue: best, periodId: period.id };
+  });
 }
 
-export async function periodTotals(periodId) {
+/**
+ * A period's budget, points and rate. For a period that has ended these are the
+ * stored numbers (stored on first read if nobody has yet), so every claim for it
+ * uses the same rate however late it comes. For an open period they are live
+ * and provisional: the rate falls as more eligible points are earned.
+ */
+export async function periodTotals(periodId, { now = new Date() } = {}) {
   const knex = getDb();
-  const period = await knex('reward_periods').where({ id: periodId }).first();
+  let period = await knex('reward_periods').where({ id: periodId }).first();
   if (!period) return null;
+  if (!toBool(period.finalized) && new Date(period.ends_at).getTime() <= now.getTime()) {
+    period = await finalizePeriod(periodId, { now });
+  }
+  const budget = Number(period.budget_tokens);
+  if (toBool(period.finalized)) {
+    return {
+      period, totalPoints: Number(period.total_eligible_points), budget, rate: Number(period.rate), final: true,
+    };
+  }
   const row = await knex('eligible_breaks').where({ period_id: periodId })
     .sum({ points: 'break_value' }).first();
   const totalPoints = Number(row?.points ?? 0);
-  const budget = Number(period.budget_tokens);
   // The core payout formula: the budget is fixed, so the per-point rate falls
   // as more eligible points are earned. The budget can never be overspent.
   const rate = totalPoints > 0 ? budget / totalPoints : 0;
-  return { period, totalPoints, budget, rate };
+  return { period, totalPoints, budget, rate, final: false };
 }
 
 export async function userPeriodPoints(userId, periodId) {
@@ -183,7 +272,8 @@ export async function quote(userId, periodId) {
     totalPoints: totals.totalPoints,
     budget: totals.budget,
     rate: totals.rate,
-    tokens: Number(tokens.toFixed(9)),
+    // Rounded down, like the stored rate: rounding up could overspend the budget.
+    tokens: floor9(tokens),
     capped: uncapped > cap,
     minPoints: config.rewards.minPointsToRedeem,
   };
