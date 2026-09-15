@@ -18,8 +18,11 @@ export function verifyInitData(initData, botToken = config.botToken) {
   const params = new URLSearchParams(initData);
   const hash = params.get('hash');
   if (!hash) return { ok: false, reason: 'missing hash' };
+  // Only `hash` is left out. `signature` (Telegram's Ed25519 field, sent by
+  // current clients) IS covered by the HMAC — it is excluded solely from the
+  // separate third-party Ed25519 check. Dropping it here rejected every real
+  // sign-in with "bad signature".
   params.delete('hash');
-  params.delete('signature'); // Telegram's Ed25519 field is not part of the HMAC check
 
   const dataCheckString = [...params.entries()]
     .sort(([a], [b]) => (a < b ? -1 : 1))

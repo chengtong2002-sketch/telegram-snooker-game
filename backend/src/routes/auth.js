@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { verifyInitData, issueSession, requireAuth } from '../auth.js';
 import { config } from '../config.js';
+import { logger } from '../logger.js';
 import { activeWallet } from '@snooker/db';
 import { activeMatchesFor } from '../services/matchService.js';
 
@@ -16,7 +17,16 @@ router.post('/telegram', async (req, res) => {
   }
 
   const check = verifyInitData(initData);
-  if (!check.ok) return res.status(401).json({ error: check.reason });
+  if (!check.ok) {
+    // Field names and the bot id only (the token's public half) — never values.
+    // Enough to tell a changed payload shape from a wrong BOT_TOKEN.
+    logger.warn({
+      reason: check.reason,
+      fields: typeof initData === 'string' ? [...new URLSearchParams(initData).keys()].sort() : typeof initData,
+      botId: config.botToken.split(':')[0] || null,
+    }, 'telegram sign-in rejected');
+    return res.status(401).json({ error: check.reason });
+  }
 
   const { token, user } = await issueSession(check.user);
   return res.json({
