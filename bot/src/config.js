@@ -30,9 +30,31 @@ export const config = {
   supportHandle: process.env.SUPPORT_HANDLE ?? '',
 };
 
+/** Same rule as the backend: NODE_ENV=production, or on Railway at all. */
+export const isDeployed = (env = process.env) => env.NODE_ENV === 'production'
+  || ['RAILWAY_ENVIRONMENT', 'RAILWAY_ENVIRONMENT_NAME', 'RAILWAY_PROJECT_ID', 'RAILWAY_SERVICE_ID']
+    .some((name) => Boolean(env[name]));
+
+/**
+ * The internal key guards /internal/notify (which makes the bot message any
+ * player, with a game button) and, in webhook mode, the Telegram update path.
+ * The default and the .env.example placeholder are public.
+ */
+export function productionConfigProblems(cfg = config) {
+  const key = cfg.internalApiKey ?? '';
+  return key === 'dev-internal-key' || /change-me/i.test(key) || key.length < 24
+    ? ['INTERNAL_API_KEY must be a real secret of at least 24 characters (openssl rand -hex 24), the same on bot and backend']
+    : [];
+}
+
 export function assertConfig() {
   if (!config.botToken) {
     console.error('BOT_TOKEN is not set — copy .env.example to .env and fill it in.');
+    process.exit(1);
+  }
+  const problems = isDeployed() ? productionConfigProblems() : [];
+  if (problems.length) {
+    console.error(`refusing to start with an unsafe production config:\n  - ${problems.join('\n  - ')}`);
     process.exit(1);
   }
   if (!config.gameUrl) {

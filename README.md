@@ -226,8 +226,13 @@ backend's, and the backend needs the bot's — so do it in two passes.
    REWARD_BUDGET_TOKENS=1000
    TONCONNECT_ALLOWED_DOMAINS=<game-domain>
    ```
-   The backend refuses to boot in production if `JWT_SECRET` is unset,
-   `ALLOWED_ORIGINS` is `*`, or `ALLOW_DEV_AUTH` is on. That check is deliberate.
+   The backend refuses to boot when deployed — `NODE_ENV=production` **or** any
+   Railway environment variable present, so forgetting `NODE_ENV` does not skip
+   it — if `BOT_TOKEN` is unset, `JWT_SECRET` or `INTERNAL_API_KEY` is a default,
+   an `.env.example` placeholder or too short, `ALLOWED_ORIGINS` is `*`,
+   `ALLOW_DEV_AUTH` is on, or `TONCONNECT_ALLOWED_DOMAINS` is empty. The bot
+   applies the same `INTERNAL_API_KEY` rule. That check is deliberate: never
+   paste a local `.env` into Railway.
 
 5. **Bot only:**
    ```

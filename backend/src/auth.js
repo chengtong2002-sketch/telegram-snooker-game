@@ -80,8 +80,10 @@ export async function requireAuth(req, res, next) {
 
 /** Shared-secret guard for bot -> backend calls. */
 export function requireInternal(req, res, next) {
-  const key = req.get('x-internal-key');
-  if (!key || key !== config.internalApiKey) {
+  const key = Buffer.from(req.get('x-internal-key') ?? '');
+  const expected = Buffer.from(config.internalApiKey);
+  // An empty INTERNAL_API_KEY must not let an empty header through.
+  if (expected.length === 0 || key.length !== expected.length || !crypto.timingSafeEqual(key, expected)) {
     return res.status(401).json({ error: 'bad internal key' });
   }
   return next();

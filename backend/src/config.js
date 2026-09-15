@@ -57,13 +57,40 @@ export const config = {
   allowDevAuth: bool(process.env.ALLOW_DEV_AUTH, false),
 };
 
-export function assertProductionConfig(logger) {
-  if (config.nodeEnv !== 'production') return;
+/**
+ * Deployed means NODE_ENV=production OR running on Railway at all. Keying the
+ * safety check off NODE_ENV alone failed open: forget that one variable (or
+ * paste a local .env, which says development) and every check below was skipped.
+ */
+export const isDeployed = (env = process.env) => env.NODE_ENV === 'production'
+  || ['RAILWAY_ENVIRONMENT', 'RAILWAY_ENVIRONMENT_NAME', 'RAILWAY_PROJECT_ID', 'RAILWAY_SERVICE_ID']
+    .some((name) => Boolean(env[name]));
+
+// Defaults and .env.example placeholders are public — as good as no secret.
+const weakSecret = (value, fallback, minLength) => !value || value === fallback
+  || /change-me/i.test(value) || value.length < minLength;
+
+/** Everything unsafe about `cfg` for a deployed backend. Pure, for tests. */
+export function productionConfigProblems(cfg = config) {
   const problems = [];
-  if (!config.botToken) problems.push('BOT_TOKEN is required to verify Telegram initData');
-  if (config.jwtSecret === 'dev-only-insecure-secret') problems.push('JWT_SECRET must be set');
-  if (config.allowedOrigins.includes('*')) problems.push('ALLOWED_ORIGINS must not be *');
-  if (config.allowDevAuth) problems.push('ALLOW_DEV_AUTH must be off in production');
+  if (!cfg.botToken) problems.push('BOT_TOKEN is required to verify Telegram initData');
+  if (weakSecret(cfg.jwtSecret, 'dev-only-insecure-secret', 32)) {
+    problems.push('JWT_SECRET must be a real secret of at least 32 characters (openssl rand -hex 32)');
+  }
+  if (weakSecret(cfg.internalApiKey, 'dev-internal-key', 24)) {
+    problems.push('INTERNAL_API_KEY must be a real secret of at least 24 characters (openssl rand -hex 24)');
+  }
+  if (cfg.allowedOrigins.includes('*')) problems.push('ALLOWED_ORIGINS must list the game origin, not *');
+  if (cfg.allowDevAuth) problems.push('ALLOW_DEV_AUTH must be off — it lets anyone sign in as anyone');
+  if (cfg.tonConnect.allowedDomains.length === 0) {
+    problems.push('TONCONNECT_ALLOWED_DOMAINS must name the game domain — empty accepts wallet proofs signed for any site');
+  }
+  return problems;
+}
+
+export function assertProductionConfig(logger, env = process.env) {
+  if (!isDeployed(env)) return;
+  const problems = productionConfigProblems();
   if (problems.length) {
     logger.error({ problems }, 'refusing to start with an unsafe production config');
     process.exit(1);

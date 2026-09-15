@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import express from 'express';
 import { webhookCallback } from 'grammy';
 import { userById } from '@snooker/db';
@@ -40,7 +41,9 @@ export function startNotificationServer(bot) {
   }
 
   app.use('/internal', (req, res, next) => {
-    if (req.get('x-internal-key') !== config.internalApiKey) {
+    const key = Buffer.from(req.get('x-internal-key') ?? '');
+    const expected = Buffer.from(config.internalApiKey);
+    if (expected.length === 0 || key.length !== expected.length || !crypto.timingSafeEqual(key, expected)) {
       return res.status(401).json({ error: 'bad internal key' });
     }
     return next();
