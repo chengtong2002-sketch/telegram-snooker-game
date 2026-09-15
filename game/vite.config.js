@@ -6,7 +6,7 @@ import { defineConfig } from 'vite';
  * whatever host the page was actually opened on. A wallet app fetches this file
  * and signs its ton_proof for that domain, so behind a tunnel with a random
  * hostname (cloudflared) the static placeholder in public/ cannot work.
- * Production builds still ship public/tonconnect-manifest.json unchanged.
+ * Production builds get theirs from buildTonConnectManifest() below.
  */
 const devTonConnectManifest = () => ({
   name: 'dev-tonconnect-manifest',
@@ -23,8 +23,36 @@ const devTonConnectManifest = () => ({
   },
 });
 
+/**
+ * Build: write dist/tonconnect-manifest.json for GAME_PUBLIC_URL (the game's
+ * https origin), replacing the public/ placeholder. Wallets refuse a manifest
+ * whose url is not the page's origin, so on Railway a missing GAME_PUBLIC_URL
+ * fails the build instead of shipping a game where wallet linking cannot work.
+ */
+const buildTonConnectManifest = () => ({
+  name: 'build-tonconnect-manifest',
+  apply: 'build',
+  generateBundle() {
+    const origin = process.env.GAME_PUBLIC_URL?.trim().replace(/\/+$/, '');
+    if (!origin) {
+      if (Object.keys(process.env).some((k) => k.startsWith('RAILWAY_'))) {
+        this.error('GAME_PUBLIC_URL must be set (e.g. https://${{RAILWAY_PUBLIC_DOMAIN}}) so the TON Connect manifest names this site');
+      }
+      this.warn('GAME_PUBLIC_URL is not set: tonconnect-manifest.json keeps its placeholder url');
+      return;
+    }
+    if (!origin.startsWith('https://')) this.error(`GAME_PUBLIC_URL must be https, got ${origin}`);
+    const base = JSON.parse(readFileSync(new URL('./public/tonconnect-manifest.json', import.meta.url), 'utf8'));
+    this.emitFile({
+      type: 'asset',
+      fileName: 'tonconnect-manifest.json',
+      source: JSON.stringify({ ...base, url: origin, iconUrl: `${origin}/icon-180.png` }, null, 2),
+    });
+  },
+});
+
 export default defineConfig({
-  plugins: [devTonConnectManifest()],
+  plugins: [devTonConnectManifest(), buildTonConnectManifest()],
   server: {
     port: 5173,
     host: true,
