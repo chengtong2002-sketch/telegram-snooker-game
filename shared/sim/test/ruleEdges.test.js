@@ -18,7 +18,6 @@ function sparseFrame(placements, patch = {}) {
 }
 
 const spotOf = (colour) => COLOURS.find((c) => c.color === colour).spot;
-const TL = POCKETS.find((p) => p.id === 'tl');
 const BR = POCKETS.find((p) => p.id === 'br');
 
 /** No two balls on the table overlap. */
@@ -38,24 +37,24 @@ function assertNoOverlap(frame) {
 // change fails here loudly instead of silently testing something else.
 
 /**
- * Cue ball clips `obj` thinly on its way into the top-left pocket.
+ * Cue ball clips `obj` thinly, is deflected 50°, and runs into the top-left pocket.
  *
- * Laid out for the spec pockets (89mm corners, r 7.0). The object ball sits
- * 4.75cm to the side of the cue ball's path, in the middle of the band where
- * both yellow and black give exactly these two fouls at every power from 0.30
- * to 0.45 (checked in 0.01 steps): offsets 4.4–5.125cm. The first layout (3.5cm,
- * power 0.35) still worked but sat beside offsets and powers that did not, so
- * a small physics change could have broken it.
+ * Built from the contact geometry (after a thin hit the cue ball leaves at right
+ * angles to the line between the centres), then checked in the simulator: aimed
+ * anywhere from -86.25° to -85.35° (±0.45° around the -85.8° used), at every power
+ * from 0.30 to 0.60, both yellow and black give exactly these two fouls.
+ * The old layout, a clip along the cue ball's own path to the pocket, only worked
+ * while ball contacts pushed along polygon faces instead of the centre line.
+ * Anchored to the table corner, not a pocket's fall point.
  */
 function clipIntoPocket(obj) {
-  const off = 4.75 / Math.SQRT2;
   return sparseFrame({
-    cue: { x: TL.x + 60, y: TL.y + 60 },
-    [obj]: { x: TL.x + 30 + off, y: TL.y + 30 - off },
+    cue: { x: 18.067, y: 65.528 },
+    [obj]: { x: 25, y: 25 },
     red1: { x: 250, y: 150 },
   }, { ballOn: 'red' });
 }
-const CLIP_SHOT = { angle: Math.atan2(-60, -60), power: 0.38 };
+const CLIP_SHOT = { angle: (-85.8 * Math.PI) / 180, power: 0.45 };
 
 test('compound foul, wrong ball first (yellow) + cue ball potted: 4 once, not 8', () => {
   const { state, outcome } = resolveShot(clipIntoPocket('yellow'), CLIP_SHOT);

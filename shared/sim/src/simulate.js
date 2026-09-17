@@ -4,11 +4,26 @@ import {
   CORNER_POCKET_CUT, MIDDLE_POCKET_CUT,
   cmPerSecToMatter, matterToCmPerSec,
 } from './constants.js';
+import { installExactContacts, markCircle } from './contacts.js';
 
-const { Engine, Bodies, Body, Composite, Events } = Matter;
+const { Engine, Bodies, Body, Composite, Events, Resolver } = Matter;
+
+// Matter keeps this on the resolver itself, not per engine. The sim is the only
+// thing using Matter in the Mini App and on the server, so setting it here, on
+// import, applies it to every simulation on both. See PHYSICS.restingThresh.
+Resolver._restingThresh = PHYSICS.restingThresh;
+// Likewise global: contacts involving balls are computed as true circles, not
+// Matter's polygons. See contacts.js.
+installExactContacts();
 
 const CUSHION_THICKNESS = 12;
 const OFF_TABLE_MARGIN = 30;
+
+/** Sides for a ball's polygon, only a bounding shape for Matter to find nearby pairs (contacts use the exact circle). */
+const BALL_SIDES = 16;
+
+/** Radius of an N-gon whose flat sides just touch a circle of radius r, so the polygon encloses the circle. */
+const circumscribed = (r, sides) => r / Math.cos(Math.PI / sides);
 
 function buildCushions() {
   const W = TABLE.width;
@@ -39,7 +54,7 @@ function buildCushions() {
 }
 
 function makeBallBody(ball) {
-  const body = Bodies.circle(ball.x, ball.y, BALL_RADIUS, {
+  const body = Bodies.polygon(ball.x, ball.y, BALL_SIDES, circumscribed(BALL_RADIUS, BALL_SIDES), {
     restitution: PHYSICS.ballRestitution,
     friction: PHYSICS.ballFriction,
     frictionAir: PHYSICS.frictionAir,
@@ -48,7 +63,7 @@ function makeBallBody(ball) {
     label: ball.id,
   });
   body.ballId = ball.id;
-  return body;
+  return markCircle(body, BALL_RADIUS);
 }
 
 const speedCmPerSec = (body) => matterToCmPerSec(Math.hypot(body.velocity.x, body.velocity.y));
@@ -87,6 +102,10 @@ export function createSimulation(balls, shot) {
   Events.on(engine, 'collisionStart', (evt) => {
     for (const pair of evt.pairs) {
       const { bodyA: a, bodyB: b } = pair;
+      // Matter gives a pair the higher of the two restitutions, which would make
+      // every cushion as bouncy as a ball. This event fires before the contact
+      // is solved, so the bounce uses the cushion's value.
+      if (a.label === 'cushion' || b.label === 'cushion') pair.restitution = PHYSICS.cushionRestitution;
       if (a.ballId && b.ballId) {
         events.push({ type: 'ball-hit', a: a.ballId, b: b.ballId, step: state.step });
         if (!state.firstContact && (a.ballId === 'cue' || b.ballId === 'cue')) {

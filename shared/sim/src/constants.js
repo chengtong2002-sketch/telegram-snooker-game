@@ -86,11 +86,18 @@ export const MIN_FOUL = 4;
 //    v * (dt / BASE_DELTA) units per step, and v is always "units per 1/60s".
 //    Use cmPerSecToMatter/matterToCmPerSec rather than converting by hand.
 //
-// 2. The resolver only applies restitution when the approach speed exceeds
-//    `Resolver._restingThresh * (dt / BASE_DELTA)` = 2 * 0.2 = 0.4 here, i.e.
-//    about 24 cm/s. Below that, contacts are treated as resting and balls
-//    nudge each other instead of transferring momentum. That is fine for balls
-//    that are all but stopped; it is why the timestep is not made any coarser.
+// 2. The resolver treats a contact as resting, and cancels its approach speed
+//    instead of bouncing it, when the approach is slower than
+//    `Resolver._restingThresh * (dt / BASE_DELTA)` per step. That velocity is a
+//    position change per actual step, so with Matter's default of 2 it was
+//    2 * 0.2 = 0.4cm per 1/300s: 120 cm/s, not the ~24 once written here. Most
+//    real contacts are slower than that, so cushions stopped balls dead (6% of
+//    speed kept) and a ball striking a still ball left both moving at 49%.
+//    PHYSICS.restingThresh sets it to about restSpeed instead.
+//
+// 3. A pair's restitution is the HIGHER of its two bodies', so a cushion could
+//    never be less bouncy than a ball. simulate.js sets cushion contacts to
+//    PHYSICS.cushionRestitution itself.
 export const BASE_DELTA = 1000 / 60;
 
 export const PHYSICS = {
@@ -98,8 +105,11 @@ export const PHYSICS = {
   maxSteps: 300 * 25,      // hard stop after 25 simulated seconds
   restSpeed: 3,            // cm/s below which a ball is parked
   frictionAir: 0.009,      // cloth drag, per base delta
-  ballRestitution: 0.94,
-  cushionRestitution: 0.84,
+  ballRestitution: 0.94,   // ball on ball: a straight hit leaves the object ball ~90% of the speed
+  // Resolver._restingThresh: 0.05 → 0.05 * 0.2 = 0.01cm per step = 3 cm/s, the
+  // speed below which balls are parked anyway. See (2) above.
+  restingThresh: 0.05,
+  cushionRestitution: 0.75, // a ball keeps ~71% of its speed straight into a cushion, ~83% at 45°
   ballFriction: 0.02,
 };
 
