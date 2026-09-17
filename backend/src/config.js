@@ -50,6 +50,9 @@ export const config = {
     // Hard ceiling on a single player's share of one period's budget.
     maxShare: num(process.env.REWARD_MAX_SHARE, 0.25),
     minPointsToRedeem: num(process.env.REWARD_MIN_POINTS, 10),
+    // How long after a period closes its reward can still be claimed. After
+    // that an unclaimed reward expires and is never minted.
+    claimWindowDays: num(process.env.REWARD_CLAIM_WINDOW_DAYS, 30),
     autoPayout: bool(process.env.REWARD_AUTO_PAYOUT, false),
     // Test accounts (Telegram user ids, comma-separated) that skip the daily
     // match / pairing limits and the wallet-change claim cooldown. Anything in

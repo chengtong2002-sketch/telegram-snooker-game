@@ -256,8 +256,8 @@ export async function userPeriodPoints(userId, periodId) {
   return Number(row?.points ?? 0);
 }
 
-export async function quote(userId, periodId) {
-  const totals = await periodTotals(periodId);
+export async function quote(userId, periodId, { now = new Date() } = {}) {
+  const totals = await periodTotals(periodId, { now });
   if (!totals) return null;
   const points = await userPeriodPoints(userId, periodId);
   const uncapped = points * totals.rate;
@@ -267,7 +267,7 @@ export async function quote(userId, periodId) {
     periodId,
     kind: totals.period.kind,
     endsAt: totals.period.ends_at,
-    closed: new Date(totals.period.ends_at).getTime() <= Date.now(),
+    closed: new Date(totals.period.ends_at).getTime() <= now.getTime(),
     points,
     totalPoints: totals.totalPoints,
     budget: totals.budget,
@@ -279,20 +279,168 @@ export async function quote(userId, periodId) {
   };
 }
 
+/** Days after a period closes that its reward can still be claimed (REWARD_CLAIM_WINDOW_DAYS). */
+export const CLAIM_WINDOW_DAYS = () => config.rewards.claimWindowDays;
+
 /**
- * Queue a redemption. Only for a closed period, so the rate is final — paying
- * out mid-period would let the last players in the window be underfunded.
- * Idempotent on request_id, and one redemption per player per period.
+ * Time left to claim after a wallet-change cooldown ends, when that cooldown ran
+ * into a period's deadline. Extending only to the end of the cooldown would
+ * unlock the claim at the very moment it expired.
  */
-export async function redeem({ userId, periodId, requestId }) {
+export const CLAIM_GRACE_AFTER_COOLDOWN_MS = DAY_MS;
+
+/** When the wallet-change cooldown lifts, in ms, or null if it does not apply. */
+function cooldownEndsAt(user, exempt) {
+  if (exempt || !user?.wallet_changed_at) return null;
+  return new Date(user.wallet_changed_at).getTime() + WALLET_CLAIM_COOLDOWN_MS;
+}
+
+/**
+ * Last moment (ms, exclusive) `user` can claim `period`: CLAIM_WINDOW_DAYS after
+ * it closed. A period must not expire during the player's wallet cooldown, when
+ * they cannot claim at all, so a cooldown that began before the deadline pushes
+ * the deadline out to a day after the cooldown ends. A wallet change after the
+ * deadline revives nothing.
+ */
+export function claimDeadline(period, user, { exempt = false } = {}) {
+  const raw = new Date(period.ends_at ?? period.endsAt).getTime() + CLAIM_WINDOW_DAYS() * DAY_MS;
+  const cooldownEnd = cooldownEndsAt(user, exempt);
+  if (cooldownEnd === null || new Date(user.wallet_changed_at).getTime() > raw) return raw;
+  return Math.max(raw, cooldownEnd + CLAIM_GRACE_AFTER_COOLDOWN_MS);
+}
+
+/**
+ * Every closed period `userId` has unclaimed points in and can still claim,
+ * oldest first. Periods below the minimum stay listed with `claimable: false` so
+ * the player can see why; claimed and expired periods are left out.
+ */
+export async function claimablePeriods(userId, { now = new Date() } = {}) {
+  const knex = getDb();
+  const user = await knex('users').where({ id: userId }).first();
+  const exempt = await isLimitExempt(userId);
+  // A deadline can move out by at most the cooldown plus the grace day.
+  const oldest = new Date(now.getTime() - CLAIM_WINDOW_DAYS() * DAY_MS - WALLET_CLAIM_COOLDOWN_MS - CLAIM_GRACE_AFTER_COOLDOWN_MS);
+
+  const earnedIn = (await knex('eligible_breaks').where({ user_id: userId }).distinct('period_id'))
+    .map((r) => r.period_id);
+  if (earnedIn.length === 0) return { windowDays: CLAIM_WINDOW_DAYS(), periods: [], totalTokens: 0 };
+  const periods = await knex('reward_periods').whereIn('id', earnedIn)
+    .where('ends_at', '<=', now).where('ends_at', '>', oldest)
+    .orderBy('ends_at', 'asc');
+  const claimed = new Set((await knex('redemptions').where({ user_id: userId }).whereIn('period_id', earnedIn)
+    .select('period_id')).map((r) => String(r.period_id)));
+
+  const out = [];
+  for (const period of periods) {
+    if (claimed.has(String(period.id))) continue;
+    const expiresAt = claimDeadline(period, user, { exempt });
+    if (now.getTime() >= expiresAt) continue;
+    const q = await quote(userId, period.id, { now });
+    const enough = q.points >= q.minPoints && q.tokens > 0;
+    out.push({
+      periodId: period.id,
+      kind: period.kind,
+      startsAt: new Date(period.starts_at).toISOString(),
+      endsAt: new Date(period.ends_at).toISOString(),
+      expiresAt: new Date(expiresAt).toISOString(),
+      points: q.points,
+      totalPoints: q.totalPoints,
+      rate: q.rate,
+      tokens: q.tokens,
+      capped: q.capped,
+      minPoints: q.minPoints,
+      claimable: enough,
+      reason: enough ? null : 'below-minimum',
+    });
+  }
+  const totalTokens = floor9(out.filter((p) => p.claimable).reduce((sum, p) => sum + p.tokens, 0));
+  return { windowDays: CLAIM_WINDOW_DAYS(), periods: out, totalTokens };
+}
+
+const publicRedemption = (r) => ({
+  id: r.id,
+  periodId: r.period_id,
+  points: Number(r.points),
+  tokens: Number(r.tokens),
+  status: r.status,
+});
+
+/**
+ * Claim every claimable period at once: one redemption per period, each at that
+ * period's stored rate, so the payout script's per-period budget check is
+ * unchanged. Each row's request_id is `<requestId>:<periodId>`; replaying the
+ * same requestId returns what it queued the first time.
+ */
+export async function redeemClaimable({ userId, requestId, now = new Date() }) {
+  const knex = getDb();
+  const prefix = `${requestId}:`;
+  const replay = await knex('redemptions').where({ user_id: userId })
+    .whereRaw('substr(request_id, 1, ?) = ?', [prefix.length, prefix]).orderBy('period_id');
+  if (replay.length) return { status: 'duplicate', redemptions: replay.map(publicRedemption), skipped: [] };
+
+  const wallet = await activeWallet(userId);
+  if (!wallet) return { status: 'error', reason: 'no wallet linked — use /wallet first' };
+
+  const user = await userById(userId);
+  const unlocksAt = cooldownEndsAt(user, await isLimitExempt(userId));
+  if (unlocksAt !== null && now.getTime() < unlocksAt) {
+    const when = new Date(unlocksAt).toISOString();
+    return {
+      status: 'error',
+      reason: `your payout wallet changed recently — claims unlock at ${when}`,
+      unlocksAt: when,
+    };
+  }
+
+  const { periods } = await claimablePeriods(userId, { now });
+  const redemptions = [];
+  const quotes = [];
+  const skipped = [];
+  for (const p of periods) {
+    if (!p.claimable) {
+      skipped.push({
+        periodId: p.periodId, reason: p.reason, points: p.points, minPoints: p.minPoints,
+      });
+      continue;
+    }
+    const res = await redeem({
+      userId, periodId: p.periodId, requestId: `${prefix}${p.periodId}`, now,
+    });
+    if (res.status === 'queued') {
+      redemptions.push(publicRedemption(res.redemption));
+      quotes.push(res.quote);
+    } else {
+      skipped.push({ periodId: p.periodId, reason: res.reason ?? res.status });
+    }
+  }
+  return {
+    status: redemptions.length ? 'queued' : 'nothing', redemptions, quotes, skipped,
+  };
+}
+
+/**
+ * Queue a redemption for one period. Only for a closed period, so the rate is
+ * final (paying out mid-period would let the last players in the window be
+ * underfunded), and only within its claim window. Idempotent on request_id,
+ * and one redemption per player per period.
+ */
+export async function redeem({
+  userId, periodId, requestId, now = new Date(),
+}) {
   const knex = getDb();
 
   const existingByRequest = await knex('redemptions').where({ request_id: requestId }).first();
   if (existingByRequest) return { status: 'duplicate', redemption: existingByRequest };
 
-  const q = await quote(userId, periodId);
+  const q = await quote(userId, periodId, { now });
   if (!q) return { status: 'error', reason: 'unknown period' };
   if (!q.closed) return { status: 'error', reason: 'period still open' };
+
+  const user = await userById(userId);
+  const exempt = await isLimitExempt(userId);
+  if (now.getTime() >= claimDeadline({ ends_at: q.endsAt }, user, { exempt })) {
+    return { status: 'error', reason: 'the claim window for this period has closed' };
+  }
   if (q.points < q.minPoints) {
     return { status: 'error', reason: `need at least ${q.minPoints} eligible points` };
   }
@@ -305,15 +453,12 @@ export async function redeem({ userId, periodId, requestId }) {
 
   // A freshly changed wallet cannot receive a claim yet, so whoever changed it
   // on a stolen session cannot cash out before the player sees the bot's notice.
-  const user = await userById(userId);
-  if (user?.wallet_changed_at && !(await isLimitExempt(userId))) {
-    const unlocksAt = new Date(user.wallet_changed_at).getTime() + WALLET_CLAIM_COOLDOWN_MS;
-    if (Date.now() < unlocksAt) {
-      return {
-        status: 'error',
-        reason: `your payout wallet changed recently — claims unlock at ${new Date(unlocksAt).toISOString()}`,
-      };
-    }
+  const unlocksAt = cooldownEndsAt(user, exempt);
+  if (unlocksAt !== null && now.getTime() < unlocksAt) {
+    return {
+      status: 'error',
+      reason: `your payout wallet changed recently — claims unlock at ${new Date(unlocksAt).toISOString()}`,
+    };
   }
 
   const [inserted] = await knex('redemptions').insert({

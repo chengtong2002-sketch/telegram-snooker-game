@@ -87,17 +87,17 @@ export async function openWalletScreen(hud, { onClose } = {}) {
   const render = async (statusLine = '') => {
     let wallet = null;
     let period = null;
-    let closed = null;
+    let claims = { periods: [], totalTokens: 0, windowDays: 30 };
     let history = [];
     try {
-      // Two periods matter: the open one (provisional numbers, still earning)
-      // and the last closed one, which is the only one that can be redeemed.
-      const [walletRes, current, last, hist] = await Promise.all([
-        api.walletInfo(), api.rewardPeriod(), api.rewardPeriod({ closed: true }), api.rewardHistory(),
+      // The open period (provisional numbers, still earning), every closed
+      // period that can still be claimed, and recent claims.
+      const [walletRes, current, claimable, hist] = await Promise.all([
+        api.walletInfo(), api.rewardPeriod(), api.rewardClaimable(), api.rewardHistory(),
       ]);
       wallet = walletRes.wallet;
       period = current;
-      closed = last?.periodId ? last : null;
+      claims = claimable;
       history = hist.redemptions ?? [];
     } catch (err) {
       hud.modal({
@@ -122,15 +122,19 @@ export async function openWalletScreen(hud, { onClose } = {}) {
        as other players earn eligible points. Redemption unlocks once the period closes
        ${period?.endsAt ? `(${new Date(period.endsAt).toLocaleString()})` : ''}.</p>`;
 
-    const claim = closed && history.find((r) => r.periodId === closed.periodId);
-    const closedRows = closed && (closed.points > 0 || claim)
-      ? `<h3 style="margin:14px 0 6px;font-size:14px">Last closed period</h3>
-         <div class="row"><span>Closed</span><b>${new Date(closed.endsAt).toLocaleString()}</b></div>
-         <div class="row"><span>Your points</span><b>${closed.points} of ${closed.totalPoints}</b></div>
-         <div class="row"><span>Final rate</span><b>${fmt(closed.rate)} / point</b></div>
-         <div class="row"><span>Your reward</span><b>${fmt(closed.tokens)} tokens${closed.capped ? ' (capped)' : ''}</b></div>
-         ${claim ? `<div class="row"><span>Claim</span><b>${CLAIM_LABEL[claim.status] ?? claim.status}</b></div>` : ''}`
+    const day = (iso) => new Date(iso).toLocaleDateString();
+    // Periods are UTC days (or weeks): label them by the UTC date they started on.
+    const periodDay = (iso) => new Date(iso).toLocaleDateString(undefined, { timeZone: 'UTC' });
+    const claimRows = claims.periods.map((p) => (p.claimable
+      ? `<div class="row"><span>${periodDay(p.startsAt)} · claim by ${day(p.expiresAt)}</span><b>${fmt(p.tokens)} tokens${p.capped ? ' (capped)' : ''}</b></div>`
+      : `<div class="row"><span>${periodDay(p.startsAt)} · ${p.points} points, below the ${p.minPoints} minimum</span><b>—</b></div>`)).join('');
+    const unclaimed = claims.periods.length
+      ? `<h3 style="margin:14px 0 6px;font-size:14px">Unclaimed rewards</h3>${claimRows}
+         <p class="note">Each closed period's rate is final. Rewards can be claimed for
+         ${claims.windowDays} days after a period closes; after that they expire.</p>`
       : '';
+    const recent = history.slice(0, 3).map((r) => `<div class="row"><span>Claim · ${fmt(r.tokens)} tokens</span><b>${CLAIM_LABEL[r.status] ?? r.status}</b></div>`).join('');
+    const closedRows = unclaimed + (recent ? `<h3 style="margin:14px 0 6px;font-size:14px">Recent claims</h3>${recent}` : '');
 
     const actions = [];
     if (!wallet) {
@@ -147,16 +151,17 @@ export async function openWalletScreen(hud, { onClose } = {}) {
           }
         },
       });
-    } else if (closed && closed.tokens > 0 && !claim) {
+    } else if (claims.totalTokens > 0) {
       actions.push({
-        label: `Redeem ${fmt(closed.tokens)}`,
+        label: `Redeem ${fmt(claims.totalTokens)}`,
         kind: 'primary',
         onClick: async () => {
           try {
             const res = await api.redeem(newResultId());
-            await render(res.status === 'duplicate'
-              ? 'Already redeemed for this period.'
-              : 'Redemption queued — it settles on-chain shortly.');
+            const n = res.redemptions?.length ?? 0;
+            await render(res.status === 'queued'
+              ? `Queued ${n} claim${n === 1 ? '' : 's'} — they settle on-chain shortly.`
+              : 'Nothing left to claim.');
           } catch (err) {
             await render(err.message);
           }

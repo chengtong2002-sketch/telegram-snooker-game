@@ -120,6 +120,16 @@ async function handleStatus(ctx) {
         `Provisional payout: *${s.rewards.tokens.toFixed(4)}* tokens${s.rewards.capped ? ' (share capped)' : ''}`,
       );
     }
+    const open = (s.claims?.periods ?? []).filter((p) => p.claimable);
+    if (open.length) {
+      const day = (iso) => new Date(iso).toISOString().slice(0, 10);
+      lines.push('', `*Unclaimed rewards: ${Number(s.claims.totalTokens).toFixed(4)} tokens*`);
+      for (const p of open.slice(0, 5)) {
+        lines.push(`• ${day(p.startsAt)} period: ${p.tokens.toFixed(4)} tokens, claim by ${day(p.expiresAt)}`);
+      }
+      if (open.length > 5) lines.push(`• …and ${open.length - 5} more`);
+      lines.push('Claim them from /wallet. Unclaimed rewards expire.');
+    }
     await ctx.reply(lines.join('\n'), { parse_mode: 'Markdown' });
 
     for (const m of s.matches.slice(0, 3)) {

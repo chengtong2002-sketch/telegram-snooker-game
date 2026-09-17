@@ -92,4 +92,7 @@ export const linkWallet = (payload) => request('/wallet/link', { method: 'POST',
 
 export const rewardPeriod = ({ closed = false } = {}) => request(`/rewards/period${closed ? '?closed=1' : ''}`);
 export const rewardHistory = () => request('/rewards/history');
+/** Closed periods still claimable, oldest first, each with its reward and expiry. */
+export const rewardClaimable = () => request('/rewards/claimable');
+/** Claims every claimable period at once. */
 export const redeem = (requestId) => request('/rewards/redeem', { method: 'POST', body: { requestId } });

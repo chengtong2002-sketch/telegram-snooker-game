@@ -2,7 +2,7 @@ import { Router } from '../asyncRouter.js';
 import { requireAuth } from '../auth.js';
 import { getDb } from '@snooker/db';
 import {
-  currentPeriod, lastClosedPeriod, quote, redeem, periodTotals,
+  currentPeriod, lastClosedPeriod, quote, periodTotals, claimablePeriods, redeemClaimable,
 } from '../services/rewards.js';
 import { config } from '../config.js';
 
@@ -48,20 +48,29 @@ router.get('/history', async (req, res) => {
 });
 
 /**
- * Queue a payout for the last closed period. Redemptions are queued, not sent
- * inline: the actual Jetton transfer is a treasury operation (see /token) and
- * must not block an HTTP request.
+ * Every closed period the player can still claim, with its reward and the date
+ * it expires. Below-minimum periods are listed as not claimable.
+ */
+router.get('/claimable', async (req, res) => {
+  res.json(await claimablePeriods(req.user.id));
+});
+
+/**
+ * Claim every claimable period. Redemptions are queued, not sent inline: the
+ * actual Jetton mint is a treasury operation (see /token) and must not block an
+ * HTTP request. Status is `queued`, `duplicate` (this requestId already ran)
+ * or `nothing` (no claimable period).
  */
 router.post('/redeem', async (req, res) => {
   const { requestId } = req.body ?? {};
-  if (!requestId || typeof requestId !== 'string' || requestId.length > 64) {
-    return res.status(400).json({ error: 'requestId is required' });
+  // Each queued row gets `<requestId>:<periodId>`, which must fit in 64 characters.
+  if (!requestId || typeof requestId !== 'string' || requestId.length > 44) {
+    return res.status(400).json({ error: 'requestId is required (at most 44 characters)' });
   }
-  const period = await lastClosedPeriod();
-  if (!period) return res.status(409).json({ error: 'no closed reward period yet' });
-
-  const result = await redeem({ userId: req.user.id, periodId: period.id, requestId });
-  if (result.status === 'error') return res.status(409).json({ error: result.reason });
+  const result = await redeemClaimable({ userId: req.user.id, requestId });
+  if (result.status === 'error') {
+    return res.status(409).json({ error: result.reason, unlocksAt: result.unlocksAt });
+  }
   return res.json(result);
 });
 

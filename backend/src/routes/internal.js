@@ -3,7 +3,7 @@ import { requireInternal } from '../auth.js';
 import { userByTelegramId, upsertUser, activeWallet } from '@snooker/db';
 import { joinQueue, leaveQueue, queueStatus } from '../services/matchmaking.js';
 import { activeMatchesFor } from '../services/matchService.js';
-import { currentPeriod, quote } from '../services/rewards.js';
+import { currentPeriod, quote, claimablePeriods } from '../services/rewards.js';
 
 const router = Router();
 
@@ -38,6 +38,7 @@ router.post('/status', async (req, res) => {
     currentPeriod(),
   ]);
   const rewards = await quote(user.id, period.id);
+  const claims = await claimablePeriods(user.id);
   return res.json({
     user: {
       id: user.id,
@@ -49,6 +50,7 @@ router.post('/status', async (req, res) => {
     matches,
     wallet: wallet ? { address: wallet.address, network: wallet.network } : null,
     rewards,
+    claims,
   });
 });
 

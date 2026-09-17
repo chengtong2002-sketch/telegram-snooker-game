@@ -134,7 +134,17 @@ your payout     = your points × rate,  capped at REWARD_MAX_SHARE of the budget
 ```
 
 A player redeems once per period, needs a linked wallet, and needs at least
-`REWARD_MIN_POINTS`.
+`REWARD_MIN_POINTS` in that period.
+
+When a period closes its rate and total are stored, and every claim for it is
+paid at that stored rate, however late. A result is counted in the period
+containing the server's time when it is recorded (a match straddling midnight
+counts where it finishes); a result that would land in a period whose rate is
+already stored goes to the next period instead. Rewards stay claimable for
+`REWARD_CLAIM_WINDOW_DAYS` (default **30**) after their period closes, and one
+claim covers every claimable period. If a wallet-change cooldown is still running
+at a deadline, the deadline moves to a day after the cooldown ends. Rewards not
+claimed in time expire and are never minted; nothing rolls over.
 
 Two daily limits cap how fast rewards can be farmed. A player can be awarded
 at most **15** reward-eligible matches per UTC day, and at most **3** between
