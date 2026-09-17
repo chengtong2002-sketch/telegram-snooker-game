@@ -1,56 +1,54 @@
 import Matter from 'matter-js';
 import {
   TABLE, BALL_RADIUS, POCKETS, PHYSICS, MAX_SHOT_SPEED,
-  CORNER_POCKET_CUT, MIDDLE_POCKET_CUT,
   cmPerSecToMatter, matterToCmPerSec,
 } from './constants.js';
+import { cushionGeometry } from './table.js';
 import { installExactContacts, markCircle } from './contacts.js';
 
-const { Engine, Bodies, Body, Composite, Events, Resolver } = Matter;
+const { Engine, Bodies, Body, Composite, Events, Vertices, Resolver } = Matter;
 
 // Matter keeps this on the resolver itself, not per engine. The sim is the only
 // thing using Matter in the Mini App and on the server, so setting it here, on
 // import, applies it to every simulation on both. See PHYSICS.restingThresh.
 Resolver._restingThresh = PHYSICS.restingThresh;
-// Likewise global: contacts involving balls are computed as true circles, not
-// Matter's polygons. See contacts.js.
+// Likewise global: contacts involving balls and knuckles are computed as true
+// circles, not Matter's polygons. See contacts.js.
 installExactContacts();
 
-const CUSHION_THICKNESS = 12;
 const OFF_TABLE_MARGIN = 30;
 
-/** Sides for a ball's polygon, only a bounding shape for Matter to find nearby pairs (contacts use the exact circle). */
+/** Sides for a knuckle's polygon. Contacts use the exact circle (contacts.js); the polygon only has to enclose it. */
+const KNUCKLE_SIDES = 32;
+/** Sides for a ball's polygon, likewise only a bounding shape for Matter to find nearby pairs. */
 const BALL_SIDES = 16;
 
 /** Radius of an N-gon whose flat sides just touch a circle of radius r, so the polygon encloses the circle. */
 const circumscribed = (r, sides) => r / Math.cos(Math.PI / sides);
 
+/**
+ * Static bodies for the six rails: one convex polygon each (face, facings) plus
+ * a circle for every rounded knuckle. The shapes come from table.js, which the
+ * renderer draws from too.
+ */
 function buildCushions() {
-  const W = TABLE.width;
-  const H = TABLE.height;
-  const C = CORNER_POCKET_CUT;
-  const M = MIDDLE_POCKET_CUT;
-  const T = CUSHION_THICKNESS;
   const opts = {
     isStatic: true,
     restitution: PHYSICS.cushionRestitution,
     friction: 0.1,
     label: 'cushion',
   };
-  const seg = (x1, y1, x2, y2) => Bodies.rectangle(
-    (x1 + x2) / 2, (y1 + y2) / 2, Math.abs(x2 - x1), Math.abs(y2 - y1), opts,
-  );
-  return [
-    // Top rail, split either side of the middle pocket.
-    seg(C, -T, W / 2 - M, 0),
-    seg(W / 2 + M, -T, W - C, 0),
-    // Bottom rail.
-    seg(C, H, W / 2 - M, H + T),
-    seg(W / 2 + M, H, W - C, H + T),
-    // Baulk and black-end rails.
-    seg(-T, C, 0, H - C),
-    seg(W, C, W + T, H - C),
-  ];
+  const bodies = [];
+  for (const rail of cushionGeometry()) {
+    // Body.create re-centres vertices on their centroid and then moves them to
+    // `position`, so passing the centroid keeps them exactly where table.js put them.
+    const vertices = Vertices.clockwiseSort(rail.polygon.map((v) => ({ x: v.x, y: v.y })));
+    bodies.push(Body.create({ ...opts, position: Vertices.centre(vertices), vertices }));
+    for (const k of rail.knuckles) {
+      bodies.push(markCircle(Bodies.polygon(k.x, k.y, KNUCKLE_SIDES, circumscribed(k.r, KNUCKLE_SIDES), opts), k.r));
+    }
+  }
+  return bodies;
 }
 
 function makeBallBody(ball) {

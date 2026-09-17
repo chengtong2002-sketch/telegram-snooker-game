@@ -12,43 +12,75 @@ export const BALL_DIAMETER = BALL_RADIUS * 2;
 
 /**
  * Pocket geometry, to the snooker spec: corner opening 89mm and middle opening
- * 102mm, measured jaw point to jaw point at the cushion face. Middles are wider
- * than corners on a real table; they play harder because of the shape of their
- * jaws, which these square-ended cushions do not model yet.
+ * 102mm, measured between the jaw points (where each facing meets the cushion
+ * face). Middles are wider than corners on a real table but play harder, and
+ * here that comes from the jaw shape and the depth of the fall.
  *
- *   CUT    how far back from the pocket point each cushion ends (the jaw).
- *          Corner opening = CUT·√2 (across the corner); middle = 2·CUT.
- *   r      capture radius — a ball whose centre comes within r of the pocket
- *          point has dropped
+ *   CUT     how far along the face from the pocket each cushion's jaw point is.
+ *           Corner opening = CUT·√2 (across the corner); middle = 2·CUT.
+ *   JAWS    facing angle and knuckle radius per pocket type (see table.js).
+ *   POCKETS the fall: a ball whose centre comes within r of the point drops.
  *
- * Each r sits between two bounds:
+ * The falls sit behind the jaws, so a ball has to get past the facings to drop.
+ * A ball that clips a knuckle and is pushed inward then meets the leaning facing
+ * and is thrown back out, instead of dropping at the mouth. A ball that stops
+ * short can rest on the shelf in front of the fall, as on a real table.
  *
- * Corner (point at the corner itself; jaw line x + y = CUT):
- *   above hypot(CUT/√2, CUT/√2 - BALL_RADIUS) ≈ 4.81, so any ball whose centre
- *     has crossed the jaw line drops rather than hanging in the mouth;
- *   below CUT/√2 + BALL_RADIUS ≈ 7.07, so nothing is captured before it
- *     reaches the mouth. r = 8.0 caught balls ~3.5cm short of the jaws.
- *   r = 7.0. A ball on the rail at the cushion end, hypot(CUT, BALL_RADIUS) ≈ 6.8
- *   from the point, is still inside it, so it drops rather than wedging.
- *
- * Middle (point 2.0 behind the rail line):
- *   above hypot(MIDDLE_POCKET_CUT - BALL_RADIUS, 2.0) ≈ 3.18, so any ball whose
- *     centre has crossed into the mouth drops rather than hanging there;
- *   below BALL_RADIUS + 2.0 = 4.625, so a ball rolling along the cushion past
- *     the middle runs on toward the corner instead of being swallowed.
- *   r = 4.0. It was 7.4, which reached 5.4 onto the table and took
- *   rail-runners and balls up to ~2cm off the cushion.
+ * Tuned against the simulator with real contact physics (bouncy cushions,
+ * elastic ball contacts, exact circle contacts: see PHYSICS and contacts.js),
+ * choosing values whose neighbours all keep the same guarantees:
+ *   - every aimed pot drops, and so do pots aimed at 80% of the centre window
+ *     (middles straight or at 45–90°; corners on the diagonal, along either
+ *     cushion, and at 20–35° off the long cushion);
+ *   - no ball rolling along a cushion drops into a middle pocket (the middle
+ *     r must also stay below BALL_RADIUS + setback);
+ *   - no slow ball is left inside the mouth past the cushion face.
+ * Resulting feel, measured:
+ *   - straight shots that clip a jaw: 6/24 knocked into a middle, 12/24 into a
+ *     corner. Middles are wider but reject clips more.
+ *   - middles take nothing arriving 70° or more off their centre line (20° or
+ *     less to the cushion) and 8/9 at 60°; corners take balls running along
+ *     either cushion.
+ * Neighbours checked: middle facing 10–15°, knuckle 1.25–2.25 and fall 3–4
+ * keep every aimed pot (a 4cm fall loses 2 of 18 wide pots, knuckle 2.5 loses
+ * 1); every corner neighbour tried (facing 30–45°, knuckle 0.5–1.5, fall 1–3,
+ * r 5–6) keeps all. One step looser, knuckle 2.25, drops 9/9 at 60° and
+ * knocks in 10/24 clips.
+ * History: under the old dead-cushion physics the middles were first tuned to
+ * 17.5° / knuckle 1 / fall 3.75, felt too tight, and the fall moved to 3.5.
+ * After the physics fix, 17.5° / knuckle 1 rattled out wide pots, hence
+ * 12.5° / 1.75 / fall 3.5. Played, the middles still looked and felt small, so
+ * they moved to the loose end: 10° / 2 / fall 3. The cushion-runner guarantee
+ * holds while the middle r stays below BALL_RADIUS + MIDDLE_FALL_SETBACK.
  */
 export const CORNER_POCKET_CUT = 8.9 / Math.SQRT2; // 89mm opening, ≈ 6.293
 export const MIDDLE_POCKET_CUT = 10.2 / 2;         // 102mm opening
 
+/** How far the cushion bodies extend behind the face. Balls never get that deep. */
+export const CUSHION_DEPTH = 12;
+
+/**
+ * Jaw shape per pocket type (see table.js): the facing's lean toward the pocket
+ * from square, in degrees, and the knuckle radius where the face turns into the
+ * facing. Both 0 gives square-ended cushions.
+ */
+export const JAWS = {
+  corner: { facingAngle: 37.5, knuckleRadius: 1 },
+  middle: { facingAngle: 10, knuckleRadius: 2 },
+};
+
+/** How far each fall sits behind the table: middles straight back, corners along the diagonal. */
+export const MIDDLE_FALL_SETBACK = 3;
+export const CORNER_FALL_SETBACK = 2;
+const CD = CORNER_FALL_SETBACK / Math.SQRT2;
+
 export const POCKETS = [
-  { id: 'tl', x: 0,                y: 0,                  r: 7.0, type: 'corner' },
-  { id: 'tm', x: TABLE.width / 2,  y: -2.0,               r: 4.0, type: 'middle' },
-  { id: 'tr', x: TABLE.width,      y: 0,                  r: 7.0, type: 'corner' },
-  { id: 'bl', x: 0,                y: TABLE.height,       r: 7.0, type: 'corner' },
-  { id: 'bm', x: TABLE.width / 2,  y: TABLE.height + 2.0, r: 4.0, type: 'middle' },
-  { id: 'br', x: TABLE.width,      y: TABLE.height,       r: 7.0, type: 'corner' },
+  { id: 'tl', x: -CD,                y: -CD,                               r: 5.5, type: 'corner' },
+  { id: 'tm', x: TABLE.width / 2,    y: -MIDDLE_FALL_SETBACK,              r: 3.0, type: 'middle' },
+  { id: 'tr', x: TABLE.width + CD,   y: -CD,                               r: 5.5, type: 'corner' },
+  { id: 'bl', x: -CD,                y: TABLE.height + CD,                 r: 5.5, type: 'corner' },
+  { id: 'bm', x: TABLE.width / 2,    y: TABLE.height + MIDDLE_FALL_SETBACK, r: 3.0, type: 'middle' },
+  { id: 'br', x: TABLE.width + CD,   y: TABLE.height + CD,                 r: 5.5, type: 'corner' },
 ];
 
 export const BAULK_LINE_X = 73.7;
