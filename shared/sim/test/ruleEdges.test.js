@@ -37,16 +37,25 @@ function assertNoOverlap(frame) {
 // test first asserts the shot really did what it is meant to, so a physics
 // change fails here loudly instead of silently testing something else.
 
-/** Cue ball clips `obj` thinly on its way into the top-left pocket. */
+/**
+ * Cue ball clips `obj` thinly on its way into the top-left pocket.
+ *
+ * Laid out for the spec pockets (89mm corners, r 7.0). The object ball sits
+ * 4.75cm to the side of the cue ball's path, in the middle of the band where
+ * both yellow and black give exactly these two fouls at every power from 0.30
+ * to 0.45 (checked in 0.01 steps): offsets 4.4–5.125cm. The first layout (3.5cm,
+ * power 0.35) still worked but sat beside offsets and powers that did not, so
+ * a small physics change could have broken it.
+ */
 function clipIntoPocket(obj) {
-  const off = 3.5 / Math.SQRT2;
+  const off = 4.75 / Math.SQRT2;
   return sparseFrame({
     cue: { x: TL.x + 60, y: TL.y + 60 },
     [obj]: { x: TL.x + 30 + off, y: TL.y + 30 - off },
     red1: { x: 250, y: 150 },
   }, { ballOn: 'red' });
 }
-const CLIP_SHOT = { angle: Math.atan2(-60, -60), power: 0.35 };
+const CLIP_SHOT = { angle: Math.atan2(-60, -60), power: 0.38 };
 
 test('compound foul, wrong ball first (yellow) + cue ball potted: 4 once, not 8', () => {
   const { state, outcome } = resolveShot(clipIntoPocket('yellow'), CLIP_SHOT);
