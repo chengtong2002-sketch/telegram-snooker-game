@@ -100,8 +100,9 @@ blue 5, pink 6, black 7, plus the cue ball — 22 balls. That exact configuratio
 is what makes a 147 possible, which is the ceiling on a reward-eligible break.
 
 Best of 3 frames, with the break alternating as in real snooker: the player who
-broke frame 1 breaks frame 3, the other player frame 2, whoever wins. 25-second
-shot clock, enforced on the server: if you close the
+broke frame 1 breaks frame 3, the other player frame 2, whoever wins. 30-second
+shot clock (`SHOT_CLOCK_MS` in shared/sim, the one value the game, server and bot
+all use), enforced on the server: if you close the
 app mid-turn, a sweeper applies the miss penalty and passes the turn, so nobody
 can stall a match forever.
 

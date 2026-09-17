@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   newFrame, initialBalls, resolveShot, resolveTimeout, simulateShot,
   ballById, advanceMatch, newMatch, TABLE, POCKETS, BALL_RADIUS, MAX_BREAK,
-  cuePlacementProblem, BAULK_LINE_X, D_RADIUS, CENTRE_Y,
+  cuePlacementProblem, BAULK_LINE_X, D_RADIUS, CENTRE_Y, SHOT_CLOCK_MS, SHOT_CLOCK_GRACE_MS, localDeadline,
 } from '../src/index.js';
 
 test('ball in hand: only inside the D and clear of other balls', () => {
@@ -185,4 +185,19 @@ test('best of 3: two frames ends the match', () => {
   assert.equal(match.ended, true);
   assert.equal(match.winner, 0);
   assert.deepEqual(match.framesWon, [2, 0]);
+});
+
+test('the shot clock is 30 seconds with a short grace for shots in transit', () => {
+  assert.equal(SHOT_CLOCK_MS, 30_000);
+  assert.ok(SHOT_CLOCK_GRACE_MS > 0 && SHOT_CLOCK_GRACE_MS < SHOT_CLOCK_MS / 10);
+});
+
+test('localDeadline carries over only the time remaining, whatever the device clock says', () => {
+  const serverNow = Date.UTC(2026, 8, 17, 12, 0, 0);
+  const deadline = new Date(serverNow + 30_000).toISOString();
+  for (const localNow of [serverNow, serverNow - 90_000, serverNow + 90_000]) {
+    assert.equal(localDeadline(deadline, serverNow, localNow) - localNow, 30_000);
+  }
+  assert.equal(localDeadline(null, serverNow, serverNow), null);
+  assert.equal(localDeadline(deadline, undefined, 0), serverNow + 30_000, 'no server time: the absolute deadline');
 });

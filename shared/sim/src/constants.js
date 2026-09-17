@@ -101,5 +101,20 @@ export const MAX_SHOT_SPEED = 340;
 export const cmPerSecToMatter = (cmPerSec) => cmPerSec / 60;
 export const matterToCmPerSec = (v) => v * 60;
 
-export const SHOT_CLOCK_MS = 25_000;
+/**
+ * The shot clock: a flat 30 seconds per shot. This is the only place the value
+ * lives. The backend derives its deadline and sweeper from it, the Mini App
+ * counts it down, and the bot quotes it, so they cannot drift apart.
+ */
+export const SHOT_CLOCK_MS = 30_000;
+
+/**
+ * How late after the displayed deadline a PvP shot still counts, and how long
+ * the sweeper waits before expiring a turn. The player sees the full 30s count
+ * down to zero; this only absorbs the time between the tap and the request
+ * reaching the server (and the clock-offset error, which is at most one
+ * response's transit time). Without it a shot taken at 0.3s left on a slow
+ * connection arrives late and is scored as a timeout.
+ */
+export const SHOT_CLOCK_GRACE_MS = 2_000;
 export const FRAMES_TO_WIN = 2; // best of 3

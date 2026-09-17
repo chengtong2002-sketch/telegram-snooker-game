@@ -7,7 +7,6 @@ import { useTestDatabase } from '@snooker/db/testing';
 const dropTestDatabase = await useTestDatabase('concurrency');
 process.env.ALLOW_DEV_AUTH = 'true';
 process.env.NODE_ENV = 'test';
-process.env.SHOT_CLOCK_SECONDS = '25';
 
 // Stand-in for the bot: records every notification the backend pushes.
 const notifications = [];
@@ -25,6 +24,7 @@ const {
 const { buildApp } = await import('../src/app.js');
 const { sweepShotClocks, applyShot, concede } = await import('../src/services/matchService.js');
 const { Router } = await import('../src/asyncRouter.js');
+const { SHOT_CLOCK_GRACE_MS } = await import('@snooker/sim');
 
 await migrate();
 const server = buildApp({ requestLogging: false }).listen(0);
@@ -107,7 +107,8 @@ test('both players conceding at once completes the match exactly once', async ()
 
 test('two sweepers (two replicas) expiring the same shot clock charge it once', async () => {
   const { matchId } = await newMatch();
-  await getDb()('matches').where({ id: matchId }).update({ shot_deadline: new Date(Date.now() - 1000) });
+  // Past the deadline and its grace period, so the turn is due to expire.
+  await getDb()('matches').where({ id: matchId }).update({ shot_deadline: new Date(Date.now() - SHOT_CLOCK_GRACE_MS - 1000) });
 
   await Promise.all([sweepShotClocks(), sweepShotClocks()]);
   const state = fromJson((await getDb()('matches').where({ id: matchId }).first()).state);

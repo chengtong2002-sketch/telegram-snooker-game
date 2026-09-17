@@ -4,6 +4,7 @@ import { webhookCallback } from 'grammy';
 import { userById } from '@snooker/db';
 import { config } from './config.js';
 import { matchKeyboard, canOpenGame } from './keyboards.js';
+import { SHOT_CLOCK_MS } from '@snooker/sim';
 
 const FOUL_TEXT = {
   miss: 'missed everything',
@@ -99,7 +100,7 @@ export function startNotificationServer(bot) {
             '🎱 *Your shot.*',
             detail,
             `Score ${event.scores?.[0] ?? 0}–${event.scores?.[1] ?? 0} · `
-            + `${event.secondsToShoot ?? 25}s on the clock once you open the table.`,
+            + `${event.secondsToShoot ?? SHOT_CLOCK_MS / 1000}s on the clock.`,
           ].filter(Boolean).join('\n'),
           { parse_mode: 'Markdown', reply_markup: kb },
         );

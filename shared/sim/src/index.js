@@ -4,3 +4,4 @@ export * from './simulate.js';
 export * from './rules.js';
 export * from './match.js';
 export * from './ai.js';
+export * from './clock.js';

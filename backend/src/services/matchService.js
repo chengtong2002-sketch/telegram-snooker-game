@@ -66,6 +66,8 @@ export function publicMatch(row, state) {
     turnUserId: row.turn_user_id,
     shotDeadline: row.shot_deadline,
     shotClockSeconds: config.shotClockSeconds,
+    // The client counts down relative to this, not its own clock (see localDeadline in shared/sim).
+    serverNow: Date.now(),
   };
 }
 
@@ -303,7 +305,10 @@ export async function applyShot({ matchId, userId, resultId, shot }) {
   }
 
   // Shot clock: an overdue shot is scored as a miss regardless of what was sent.
-  const overdue = row.shot_deadline && new Date(row.shot_deadline).getTime() < Date.now();
+  // Overdue means past the deadline plus the grace for the request's transit;
+  // the sweeper uses the same line, so the two never disagree.
+  const overdue = row.shot_deadline
+    && new Date(row.shot_deadline).getTime() + config.shotClockGraceMs < Date.now();
   const { state: nextFrame, outcome } = overdue
     ? resolveTimeout(state.frame)
     : resolveShot(state.frame, cleanShot);
@@ -439,6 +444,12 @@ export async function sweepShotClocks() {
   for (const row of overdue) {
     try {
       let state = fromJson(row.state);
+      // A shot may still be in flight for the grace period after the deadline
+      // (applyShot accepts it); a checkpoint's decision window has no grace.
+      if (!state.checkpoint
+        && new Date(row.shot_deadline).getTime() + config.shotClockGraceMs >= Date.now()) {
+        continue;
+      }
       if (state.checkpoint) {
         // Nobody answered between frames: carry on, never concede for them.
         if (!(await startNextFrame(row, state))) continue; // the trailing player answered first

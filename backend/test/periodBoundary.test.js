@@ -5,7 +5,6 @@ import { useTestDatabase } from '@snooker/db/testing';
 const dropTestDatabase = await useTestDatabase('periodboundary');
 process.env.ALLOW_DEV_AUTH = 'true';
 process.env.NODE_ENV = 'test';
-process.env.SHOT_CLOCK_SECONDS = '25';
 process.env.BOT_NOTIFY_URL = 'http://127.0.0.1:1/internal/notify';
 process.env.REWARD_PERIOD_KIND = 'daily';
 process.env.REWARD_BUDGET_TOKENS = '1000';

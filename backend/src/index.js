@@ -5,6 +5,12 @@ import { buildApp } from './app.js';
 import { sweepShotClocks } from './services/matchService.js';
 
 assertProductionConfig(logger);
+if (process.env.SHOT_CLOCK_SECONDS && Number(process.env.SHOT_CLOCK_SECONDS) !== config.shotClockSeconds) {
+  logger.warn(
+    { SHOT_CLOCK_SECONDS: process.env.SHOT_CLOCK_SECONDS, shotClockSeconds: config.shotClockSeconds },
+    'SHOT_CLOCK_SECONDS is ignored: the shot clock is SHOT_CLOCK_MS in shared/sim, so client and server always agree',
+  );
+}
 
 const app = buildApp();
 
@@ -19,10 +25,12 @@ const server = app.listen(config.port, async () => {
 });
 
 // The shot clock is enforced here, not on the client — a player who closes the
-// Mini App mid-turn still loses the turn.
+// Mini App mid-turn still loses the turn. Every 2s so an expired turn passes
+// within a couple of seconds of the grace period ending, not up to 10s later
+// while the player's countdown sits at zero.
 const sweeper = setInterval(() => {
   sweepShotClocks().catch((err) => logger.error({ err: err.message }, 'sweep failed'));
-}, 10_000);
+}, 2_000);
 
 // Expired TON Connect nonces are already rejected on use; this just stops the
 // table growing for every challenge a player requested and never completed.

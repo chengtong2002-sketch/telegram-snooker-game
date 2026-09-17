@@ -1,6 +1,7 @@
 import {
   newMatch, resolveShot, resolveTimeout, advanceMatch, createSimulation,
   chooseShot, matchHighBreak, frameUnrecoverable, cuePlacementProblem, PHYSICS, SHOT_CLOCK_MS, MAX_BREAK,
+  localDeadline,
 } from '@snooker/sim';
 import { describeOutcome } from './hud.js';
 import { haptic } from './telegram.js';
@@ -17,9 +18,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * Drives one session of play.
  *
  * Practice resolves everything locally — it is never worth anything, so there
- * is no reason to bother the server. PvP animates locally for feel and then
- * hands the shot to the backend, whose resolution replaces whatever the client
- * came up with.
+ * is no reason to bother the server. PvP sends the shot to the backend the
+ * moment it is taken and animates it locally while the request travels; the
+ * server's resolution replaces whatever the client came up with.
  */
 export class Game {
   constructor({ mode, matchId, me, hud, renderer, controls }) {
@@ -33,7 +34,7 @@ export class Game {
     this.myIndex = 0;
     this.state = null;            // sim match state
     this.serverMatch = null;      // last authoritative payload
-    this.phase = 'idle';          // idle|aiming|animating|sending|waiting|over
+    this.phase = 'idle';          // idle|aiming|animating|sending|waiting|expired|checkpoint|over
     this.clockEndsAt = null;
     this.pendingCuePlacement = null;
     this.animBalls = null;
@@ -95,7 +96,15 @@ export class Game {
       concededBy: match.concededBy ?? null,
       checkpoint: match.checkpoint ?? null,
     };
-    this.clockEndsAt = match.shotDeadline ? new Date(match.shotDeadline).getTime() : null;
+    // Server time at the moment this response arrived: deadlines are converted
+    // with it, so a phone whose clock is off still counts down what the server enforces.
+    this.serverClock = { serverNow: match.serverNow, receivedAt: Date.now() };
+    this.clockEndsAt = this.#toLocalTime(match.shotDeadline);
+  }
+
+  /** A server timestamp on this device's clock (see localDeadline in shared/sim). */
+  #toLocalTime(serverTimestamp) {
+    return localDeadline(serverTimestamp, this.serverClock?.serverNow, this.serverClock?.receivedAt);
   }
 
   /** The HUD keeps seat order (player A left, B right); mark which seat is you. */
@@ -129,6 +138,12 @@ export class Game {
     this.controls.setCue(frame.balls.find((b) => b.id === 'cue'));
     this.hud.setFrame(frame, this.state.framesWon);
     this.#updateConcedeButton();
+
+    // The server's clock has run out but its sweeper has not passed the turn yet:
+    // do not hand the player a turn they can no longer take.
+    if (this.isMyTurn && this.mode === 'pvp' && this.clockEndsAt !== null && this.clockEndsAt <= Date.now()) {
+      return this.#awaitTurnExpiry();
+    }
 
     if (this.isMyTurn) {
       this.phase = 'aiming';
@@ -189,14 +204,20 @@ export class Game {
     this.clockEndsAt = null;
     this.hud.hint('');
 
-    await this.#animate(shot);
-
     if (this.mode === 'practice') {
+      await this.#animate(shot);
       const { state, outcome } = resolveShot(this.frame, shot);
       this.#applyLocalResult(state, outcome, true);
-    } else {
-      await this.#submitShot(shot);
+      return;
     }
+
+    // PvP: send the shot the moment it is taken, then animate while it travels.
+    // The server times the shot on arrival, so animating first (seconds, for a
+    // long shot) could land a shot taken with time left after the deadline.
+    const sending = this.#sendShot(shot);
+    await this.#animate(shot);
+    this.phase = 'sending';
+    this.#finishShot(await sending);
   }
 
   /**
@@ -239,29 +260,35 @@ export class Game {
 
   // --- PvP submission ------------------------------------------------------
 
-  async #submitShot(shot) {
-    this.phase = 'sending';
+  /** Queue and send a PvP shot. Resolves to {res} or {err}; never rejects. */
+  async #sendShot(shot) {
     const resultId = newResultId();
-
-    // Persist before sending: if the app dies here, the shot still reaches the
-    // server on the next launch, and the resultId stops it counting twice.
-    await enqueue({ resultId, kind: 'shot', matchId: this.matchId, payload: { shot } });
-
     try {
+      // Persist before sending: if the app dies here, the shot still reaches the
+      // server on the next launch, and the resultId stops it counting twice.
+      await enqueue({ resultId, kind: 'shot', matchId: this.matchId, payload: { shot } });
       const res = await api.sendShot(this.matchId, resultId, shot);
       await flush(); // the entry we just queued is now settled server-side
-      this.#applyServerResult(res);
+      return { res };
     } catch (err) {
-      if (err.offline) {
-        this.hud.toast('Offline — your shot is queued and will be sent automatically', '', 4000);
-        this.hud.hint('Queued. Reconnect to see the result.');
-        this.phase = 'waiting';
-        this.controls.setEnabled(false);
-        this.pollTimer = setInterval(() => this.#poll(), POLL_MS);
-      } else {
-        this.hud.toast(err.message, 'foul', 4000);
-        await this.#refresh();
-      }
+      return { err };
+    }
+  }
+
+  async #finishShot({ res, err }) {
+    if (res) {
+      this.#applyServerResult(res);
+      return;
+    }
+    if (err.offline) {
+      this.hud.toast('Offline — your shot is queued and will be sent automatically', '', 4000);
+      this.hud.hint('Queued. Reconnect to see the result.');
+      this.phase = 'waiting';
+      this.controls.setEnabled(false);
+      this.pollTimer = setInterval(() => this.#poll(), POLL_MS);
+    } else {
+      this.hud.toast(err.message, 'foul', 4000);
+      await this.#refresh();
     }
   }
 
@@ -300,6 +327,9 @@ export class Game {
         clearInterval(this.pollTimer);
         this.hud.closeModal();
         this.hud.toast(`Frame ${this.frame.frame}`, 'good');
+        this.#beginTurn();
+      } else if (!cp && this.phase === 'expired' && !this.isMyTurn) {
+        // The server has now passed the turn the clock took.
         this.#beginTurn();
       } else if (!cp && this.isMyTurn && !wasMyTurn) {
         clearInterval(this.pollTimer);
@@ -350,12 +380,25 @@ export class Game {
     } else if (this.phase === 'checkpoint') {
       // Decision window over: the server starts the next frame. Just resync.
       this.#poll();
-    } else {
-      // The backend sweeper is authoritative here; just resync.
-      this.controls.setEnabled(false);
+    } else if (this.isMyTurn && this.phase === 'aiming') {
       this.hud.toast('Shot clock ran out', 'foul');
-      this.#refresh();
+      this.#awaitTurnExpiry();
     }
+  }
+
+  /**
+   * The countdown has hit zero. The server passes the turn once the shot-clock
+   * grace is over; until then there is nothing to do but wait for it, without
+   * re-offering a turn the player can no longer take.
+   */
+  #awaitTurnExpiry() {
+    this.phase = 'expired';
+    this.clockEndsAt = null;
+    this.controls.setEnabled(false);
+    this.controls.setPlacing(false);
+    this.hud.hint("Time's up — the turn passes to your opponent.");
+    clearInterval(this.pollTimer);
+    this.pollTimer = setInterval(() => this.#poll(), 1500);
   }
 
   // --- conceding ----------------------------------------------------------
@@ -382,7 +425,7 @@ export class Game {
     this.hud.setConcede(false);
     this.hud.hint(''); // any "waiting for your opponent" from the last frame is stale now
     this.hud.setFrame(this.frame, this.state.framesWon);
-    this.clockEndsAt = new Date(cp.deadline).getTime();
+    this.clockEndsAt = this.#toLocalTime(cp.deadline);
     clearInterval(this.pollTimer);
     this.pollTimer = setInterval(() => this.#poll(), POLL_MS);
 

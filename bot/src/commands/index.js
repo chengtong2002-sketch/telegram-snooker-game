@@ -1,4 +1,5 @@
 import { upsertUser, activeWallet, leaderboard } from '@snooker/db';
+import { SHOT_CLOCK_MS } from '@snooker/sim';
 import * as api from '../api.js';
 import { config } from '../config.js';
 import {
@@ -17,7 +18,7 @@ async function handleStart(ctx) {
     [
       `🎱 *Snooker* — welcome, ${ctx.from.first_name ?? 'player'}.`,
       '',
-      'Best of 3 frames, full 22-ball table, 25-second shot clock.',
+      `Best of 3 frames, full 22-ball table, ${SHOT_CLOCK_MS / 1000}-second shot clock.`,
       '',
       '• */practice* — play the AI. Free, unranked, *not* reward-eligible.',
       '• */play* — get matched with a real opponent. Turn-based: you take your shot,',

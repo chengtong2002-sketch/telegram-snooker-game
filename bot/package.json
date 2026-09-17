@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@snooker/db": "*",
+    "@snooker/sim": "*",
     "dotenv": "^16.4.5",
     "express": "^4.21.1",
     "grammy": "^1.30.0"

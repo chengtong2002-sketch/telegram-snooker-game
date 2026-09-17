@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config as loadEnv } from 'dotenv';
+import { SHOT_CLOCK_MS, SHOT_CLOCK_GRACE_MS } from '@snooker/sim';
 
 // npm workspaces run each service with cwd set to its own package directory, so
 // a bare `import 'dotenv/config'` looks for ./<service>/.env and silently misses
@@ -30,7 +31,11 @@ export const config = {
   botNotifyUrl: process.env.BOT_NOTIFY_URL ?? 'http://localhost:8081/internal/notify',
   internalApiKey: process.env.INTERNAL_API_KEY ?? 'dev-internal-key',
 
-  shotClockSeconds: num(process.env.SHOT_CLOCK_SECONDS, 25),
+  // Not configurable: the Mini App counts down the same shared constant, and a
+  // different server value is exactly how a player sees time left after the
+  // server has taken their turn. Change SHOT_CLOCK_MS in shared/sim instead.
+  shotClockSeconds: SHOT_CLOCK_MS / 1000,
+  shotClockGraceMs: SHOT_CLOCK_GRACE_MS,
 
   ton: {
     network: process.env.TON_NETWORK ?? 'testnet',
