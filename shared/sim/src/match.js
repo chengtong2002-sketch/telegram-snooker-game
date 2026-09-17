@@ -34,8 +34,10 @@ export function advanceMatch(match, frameState) {
     return next;
   }
 
-  // Loser of the previous frame breaks the next one.
-  next.frame = newFrame(frameState.frame + 1, 1 - winner);
+  // Players alternate breaking, as in real snooker, whoever won: seat 0 breaks
+  // the odd frames (newMatch racks frame 1 for seat 0), seat 1 the even ones.
+  const nextFrame = frameState.frame + 1;
+  next.frame = newFrame(nextFrame, (nextFrame - 1) % 2);
   return next;
 }
 

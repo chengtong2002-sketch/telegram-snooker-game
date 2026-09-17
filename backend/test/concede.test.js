@@ -88,7 +88,7 @@ test('a frame ending 1-0 opens a checkpoint for the trailing player and blocks s
   const window = new Date(row.shot_deadline).getTime() - Date.now();
   assert.ok(window > CHECKPOINT_MS - 5000 && window <= CHECKPOINT_MS, `deadline is the decision window (${window}ms)`);
 
-  // Frame 2's breaker is the loser (seat 1), but nobody shoots until it is decided.
+  // Frame 2 is seat 1's break (breaks alternate), but nobody shoots until it is decided.
   for (const token of tokens) {
     const blocked = await call(`/api/match/${matchId}/shot`, { method: 'POST', token, body: { resultId: `${matchId}-x-${token.slice(-6)}`, shot: { angle: 0, power: 0.5 } } });
     assert.equal(blocked.status, 409);
@@ -105,7 +105,7 @@ test('a frame ending 1-0 opens a checkpoint for the trailing player and blocks s
   assert.equal(trail.body.started, true);
   assert.equal(trail.body.match.checkpoint, null);
   assert.equal(trail.body.match.frame.frame, 2);
-  assert.equal(trail.body.match.frame.turn, 1, 'loser of frame 1 breaks frame 2');
+  assert.equal(trail.body.match.frame.turn, 1, 'breaks alternate: seat 1 breaks frame 2');
   assert.equal(trail.body.match.ended, false);
 });
 

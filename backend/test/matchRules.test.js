@@ -78,7 +78,7 @@ const POT_BLACK = { angle: Math.PI / 4, power: 0.55 };
 
 // --- Best of 3 over the real API --------------------------------------------
 
-test('2-0 over the API: frame 2 is racked for the loser, and winning it ends the match with no frame 3', async () => {
+test('2-0 over the API: frame 2 is racked for seat 1 to break, and winning it ends the match with no frame 3', async () => {
   const { matchId, players: [ann, ben] } = await newPvpMatch();
 
   await setState(matchId, lastBlackFor(0, [50, 20]));
@@ -94,7 +94,7 @@ test('2-0 over the API: frame 2 is racked for the loser, and winning it ends the
   const m2 = cont.body.match;
   assert.equal(m2.frame.frame, 2);
   assert.deepEqual(m2.frame.scores, [0, 0]);
-  assert.equal(m2.frame.turn, 1, 'the loser of frame 1 breaks frame 2');
+  assert.equal(m2.frame.turn, 1, 'breaks alternate: seat 1 breaks frame 2');
   assert.equal(Number(m2.turnUserId), Number(ben.userId));
   assert.equal(m2.frame.inHand, true);
 

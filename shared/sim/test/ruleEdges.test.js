@@ -222,7 +222,7 @@ function finishFrame(match, turn, scores) {
   return advanceMatch(match, state);
 }
 
-test('frame 1 → 2: fresh rack, scores and breaks reset, the frame loser breaks', () => {
+test('frame 1 → 2: fresh rack, scores and breaks reset, seat 1 breaks', () => {
   let match = newMatch([10, 20]);
   match = finishFrame(match, 0, [60, 20]); // seat 0 pots the black: 67-20
 
@@ -241,18 +241,27 @@ test('frame 1 → 2: fresh rack, scores and breaks reset, the frame loser breaks
   assert.equal(f.inHand, true);
   assert.equal(f.ended, false);
   assert.equal(f.winner, null);
-  assert.equal(f.turn, 1, 'seat 1 lost frame 1, so seat 1 breaks frame 2');
+  assert.equal(f.turn, 1, 'seat 0 broke frame 1, so seat 1 breaks frame 2');
   assert.deepEqual(match.highBreaks, [30, 12], 'the frame\'s high breaks are folded into the match');
 });
 
-test('1-1 goes to a deciding third frame, broken by the loser of frame 2', () => {
+test('breaks alternate whoever wins: the frame 1 winner still breaks frame 2 if it is their turn to', () => {
   let match = newMatch([10, 20]);
-  match = finishFrame(match, 0, [60, 20]);
-  match = finishFrame(match, 1, [10, 50]); // seat 1 takes frame 2
+  match = finishFrame(match, 1, [20, 60]); // seat 1 wins frame 1
+  assert.deepEqual(match.framesWon, [0, 1]);
+  assert.equal(match.frame.frame, 2);
+  assert.equal(match.frame.turn, 1, 'seat 1 breaks frame 2 as the alternation says, not seat 0 the loser');
+});
+
+test('1-1 goes to a deciding third frame, broken by seat 0 again', () => {
+  let match = newMatch([10, 20]);
+  match = finishFrame(match, 1, [20, 60]); // seat 1 takes frame 1
+  assert.equal(match.frame.turn, 1);
+  match = finishFrame(match, 0, [50, 10]); // seat 0 takes frame 2
   assert.deepEqual(match.framesWon, [1, 1]);
   assert.equal(match.ended, false);
   assert.equal(match.frame.frame, 3);
-  assert.equal(match.frame.turn, 0, 'seat 0 lost frame 2');
+  assert.equal(match.frame.turn, 0, 'frames 1 and 3 are broken by seat 0; the loser of frame 2 (seat 1) does not');
 
   match = finishFrame(match, 1, [0, 40]);
   assert.equal(match.ended, true);
