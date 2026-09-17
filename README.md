@@ -122,6 +122,11 @@ does not cover them: a red potted illegally stays down (there is no red spot),
 and if a frame finishes level the black is respotted and the next score or foul
 settles it.
 
+With the ball in hand the cue ball goes anywhere in the D that does not touch
+another ball. A shot that names no placement plays from where the cue ball was
+parked in the D, and only if that spot is clear; otherwise the server refuses it
+without using up the turn.
+
 ## Rewards
 
 Each finished PvP match contributes exactly one eligible break: the highest

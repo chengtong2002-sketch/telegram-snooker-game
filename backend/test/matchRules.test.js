@@ -213,3 +213,34 @@ test('eligibility comes from the stored match, not the row object a caller passe
   assert.equal(result, null);
   assert.equal(Number((await knex('eligible_breaks').where({ match_id: 'practice-caller-lies' }).count({ n: 'id' }).first()).n), 0);
 });
+
+// --- Ball in hand over the API ------------------------------------------------
+
+test('ball in hand, no placement, a ball resting on the park spot: 400 and the turn is not used', async () => {
+  const { matchId, players: [ann] } = await newPvpMatch();
+  await setState(matchId, (state) => {
+    const f = state.frame;
+    const cue = ballById(f, 'cue');
+    Object.assign(ballById(f, 'red1'), { x: cue.x + 1, y: cue.y }); // came to rest on the park spot
+    f.inHand = true;
+    f.turn = 0;
+  });
+  const before = await getDb()('matches').where({ id: matchId }).first();
+
+  const noPlacement = await call(`/api/match/${matchId}/shot`, {
+    method: 'POST', token: ann.token, body: { resultId: `inhand-none-${matchId}`, shot: { angle: 0, power: 0.5 } },
+  });
+  assert.equal(noPlacement.status, 400);
+  assert.match(noPlacement.body.error, /no placement sent: .*touching another ball/);
+  const after = await getDb()('matches').where({ id: matchId }).first();
+  assert.equal(after.state, before.state, 'nothing was played');
+  assert.equal(Number(after.turn_user_id), Number(ann.userId), 'still her turn');
+
+  const cue = ballById(fromJson(before.state).frame, 'cue');
+  const placed = await call(`/api/match/${matchId}/shot`, {
+    method: 'POST',
+    token: ann.token,
+    body: { resultId: `inhand-placed-${matchId}`, shot: { angle: 0, power: 0.5, cuePlacement: { x: cue.x - 6, y: cue.y } } },
+  });
+  assert.equal(placed.status, 200, JSON.stringify(placed.body));
+});

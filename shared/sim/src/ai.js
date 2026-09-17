@@ -1,5 +1,6 @@
 import { POCKETS, BALL_DIAMETER, TABLE } from './constants.js';
 import { cueBall, nextColourOn } from './state.js';
+import { defaultCuePlacement } from './rules.js';
 
 const isRed = (id) => id.startsWith('red');
 
@@ -35,20 +36,25 @@ function pathBlocked(state, from, to, ignoreIds) {
  * pocket, then miss a bit. Deliberately simple — this is not a snooker engine,
  * and practice results are never crypto-eligible.
  *
+ * With the ball in hand the AI takes the legal spot defaultCuePlacement picks,
+ * aims from there, and sends it as the placement.
+ *
  * @param {object} state    frame state
  * @param {{difficulty?:'easy'|'normal'|'hard', rng?:() => number}} [opts]
- * @returns {{angle:number, power:number, target:string|null, pocket:string|null}}
+ * @returns {{angle:number, power:number, target:string|null, pocket:string|null, cuePlacement?:{x,y}}}
  */
 export function chooseShot(state, opts = {}) {
   const difficulty = opts.difficulty ?? 'normal';
   const rng = opts.rng ?? Math.random;
   const spread = { easy: 0.075, normal: 0.038, hard: 0.016 }[difficulty] ?? 0.038;
 
-  const cue = cueBall(state);
+  const placement = state.inHand ? defaultCuePlacement(state) : null;
+  const cue = placement ?? cueBall(state);
+  const placed = (shot) => (placement ? { ...shot, cuePlacement: placement } : shot);
   const targets = legalTargets(state);
 
   if (targets.length === 0) {
-    return { angle: rng() * Math.PI * 2, power: 0.4, target: null, pocket: null };
+    return placed({ angle: rng() * Math.PI * 2, power: 0.4, target: null, pocket: null });
   }
 
   const sorted = [...targets].sort(
@@ -87,10 +93,10 @@ export function chooseShot(state, opts = {}) {
     // Nothing on: play a safe-ish nudge at the nearest legal ball.
     const ball = sorted[0];
     const angle = Math.atan2(ball.y - cue.y, ball.x - cue.x) + (rng() - 0.5) * spread * 2;
-    return { angle, power: 0.35, target: ball.id, pocket: null };
+    return placed({ angle, power: 0.35, target: ball.id, pocket: null });
   }
 
   const angle = best.angle + (rng() - 0.5) * 2 * spread;
   const power = Math.min(0.95, 0.34 + best.dist / (TABLE.width * 1.6));
-  return { angle, power, target: best.target, pocket: best.pocket };
+  return placed({ angle, power, target: best.target, pocket: best.pocket });
 }

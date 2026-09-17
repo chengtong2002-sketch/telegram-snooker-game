@@ -26,6 +26,27 @@ export function cuePlacementProblem(frameState, placement) {
   return overlaps ? 'cue ball cannot be placed touching another ball' : null;
 }
 
+/**
+ * A legal spot for a cue ball in hand when no placement is chosen: where it
+ * already sits (the park spot in the D) if that is legal, otherwise the nearest
+ * legal spot in the D. Null only if the D is completely covered.
+ */
+export function defaultCuePlacement(frameState) {
+  const cue = frameState.balls.find((b) => b.id === 'cue');
+  const origin = { x: cue.x, y: cue.y };
+  if (!cuePlacementProblem(frameState, origin)) return origin;
+  let best = null;
+  const step = BALL_RADIUS / 2;
+  for (let x = BAULK_LINE_X; x >= BAULK_LINE_X - D_RADIUS; x -= step) {
+    for (let y = CENTRE_Y - D_RADIUS; y <= CENTRE_Y + D_RADIUS; y += step) {
+      if (cuePlacementProblem(frameState, { x, y })) continue;
+      const d = Math.hypot(x - origin.x, y - origin.y);
+      if (!best || d < best.d) best = { d, spot: { x, y } };
+    }
+  }
+  return best?.spot ?? null;
+}
+
 const isRed = (id) => id.startsWith('red');
 const valueOfBall = (id) => (isRed(id) ? 1 : (BALL_VALUES[id] ?? 0));
 
@@ -82,15 +103,18 @@ function contactLegal(state, firstContact) {
  */
 export function resolveShot(frameState, shot) {
   // Placement only means anything with the ball in hand; otherwise the cue ball
-  // plays from where it lies. An illegal placement is a caller bug (the server
-  // rejects it before getting here), so fail loudly rather than play it.
-  if (shot.cuePlacement) {
-    if (!frameState.inHand) {
-      shot = { ...shot, cuePlacement: undefined };
-    } else {
-      const problem = cuePlacementProblem(frameState, shot.cuePlacement);
-      if (problem) throw new Error(problem);
-    }
+  // plays from where it lies. With the ball in hand, a shot that names no
+  // placement plays from where the cue ball was parked, and that spot must be
+  // just as legal: a ball can come to rest on the park spot. An illegal spot is
+  // a caller bug (the server rejects it before getting here), so fail loudly
+  // rather than play a shot from inside another ball.
+  if (frameState.inHand) {
+    const cue = frameState.balls.find((b) => b.id === 'cue');
+    const spot = shot.cuePlacement ?? { x: cue.x, y: cue.y };
+    const problem = cuePlacementProblem(frameState, spot);
+    if (problem) throw new Error(shot.cuePlacement ? problem : `ball in hand, no placement sent: ${problem}`);
+  } else if (shot.cuePlacement) {
+    shot = { ...shot, cuePlacement: undefined };
   }
   const state = structuredClone(frameState);
   const sim = simulateShot(state.balls, shot, { trace: shot.trace === true });

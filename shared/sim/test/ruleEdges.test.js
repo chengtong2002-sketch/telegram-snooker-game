@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  newFrame, newMatch, resolveShot, advanceMatch, respotColour, ballById,
+  newFrame, newMatch, resolveShot, advanceMatch, respotColour, ballById, chooseShot,
+  defaultCuePlacement, cuePlacementProblem,
   POCKETS, COLOURS, TABLE, BALL_RADIUS, BALL_DIAMETER, CENTRE_Y,
 } from '../src/index.js';
 
@@ -293,4 +294,60 @@ test('a finished match cannot be advanced into a third frame', () => {
   assert.equal(after.frameHistory.length, 2);
   assert.equal(after.winner, 0);
   assert.equal(after.frame.frame, 2);
+});
+
+// --- Ball in hand: the cue ball's spot must be legal, placed or not ----------
+
+/** A frame with the cue ball in hand at its park spot and `blocker` resting on that spot. */
+function inHandWithParkBlocked() {
+  const frame = newFrame();
+  frame.inHand = true;
+  const cue = ballById(frame, 'cue');
+  // Everything else off the table except one red, which rolled onto the park spot.
+  frame.balls.forEach((b) => { if (b.id !== 'cue') b.potted = true; });
+  Object.assign(ballById(frame, 'red1'), { x: cue.x + 1, y: cue.y, potted: false });
+  Object.assign(ballById(frame, 'red2'), { x: 250, y: 60, potted: false });
+  return { ...frame, redsRemaining: 2 };
+}
+
+test('ball in hand with no placement plays from the park spot when it is clear', () => {
+  const frame = newFrame(); // opening break: in hand, park spot clear
+  assert.doesNotThrow(() => resolveShot(frame, { angle: -0.02, power: 0.9 }));
+});
+
+test('ball in hand with no placement is refused when a ball rests on the park spot', () => {
+  const frame = inHandWithParkBlocked();
+  assert.throws(() => resolveShot(frame, { angle: 0, power: 0.5 }), /touching another ball/);
+});
+
+test('ball in hand: a legal placement still plays even when the park spot is blocked', () => {
+  const frame = inHandWithParkBlocked();
+  const spot = defaultCuePlacement(frame);
+  assert.ok(spot, 'there is room in the D');
+  assert.equal(cuePlacementProblem(frame, spot), null);
+  assert.doesNotThrow(() => resolveShot(frame, { angle: 0, power: 0.5, cuePlacement: spot }));
+});
+
+test('defaultCuePlacement: the park spot when it is clear, else the nearest clear spot in the D', () => {
+  const clear = newFrame();
+  const park = ballById(clear, 'cue');
+  assert.deepEqual(defaultCuePlacement(clear), { x: park.x, y: park.y });
+
+  const blocked = inHandWithParkBlocked();
+  const spot = defaultCuePlacement(blocked);
+  assert.equal(cuePlacementProblem(blocked, spot), null);
+  assert.ok(Math.hypot(spot.x - park.x, spot.y - park.y) <= BALL_DIAMETER * 2, 'close to the park spot');
+});
+
+test('the practice AI places the cue ball legally when the park spot is blocked', () => {
+  const frame = inHandWithParkBlocked();
+  const shot = chooseShot(frame, { rng: () => 0.5 });
+  assert.ok(shot.cuePlacement, 'the AI sends a placement when in hand');
+  assert.equal(cuePlacementProblem(frame, shot.cuePlacement), null);
+  assert.doesNotThrow(() => resolveShot(frame, shot));
+});
+
+test('the practice AI does not send a placement when the cue ball is not in hand', () => {
+  const frame = sparseFrame({ cue: { x: 100, y: CENTRE_Y }, red1: { x: 180, y: CENTRE_Y } }, { ballOn: 'red' });
+  assert.equal(chooseShot(frame, { rng: () => 0.5 }).cuePlacement, undefined);
 });

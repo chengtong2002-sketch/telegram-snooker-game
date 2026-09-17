@@ -292,6 +292,14 @@ export async function applyShot({ matchId, userId, resultId, shot }) {
     const problem = cuePlacementProblem(state.frame, shot.cuePlacement);
     if (problem) return { status: 'error', code: 400, reason: problem };
     cleanShot.cuePlacement = { x: shot.cuePlacement.x, y: shot.cuePlacement.y };
+  } else if (state.frame.inHand) {
+    // No placement: the shot plays from where the cue ball was parked in the D,
+    // which a ball may have come to rest on. Same rule, and the turn is not used up.
+    const cue = state.frame.balls.find((b) => b.id === 'cue');
+    const problem = cuePlacementProblem(state.frame, { x: cue.x, y: cue.y });
+    if (problem) {
+      return { status: 'error', code: 400, reason: `ball in hand, no placement sent: ${problem}` };
+    }
   }
 
   // Shot clock: an overdue shot is scored as a miss regardless of what was sent.
