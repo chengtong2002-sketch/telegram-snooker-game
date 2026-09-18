@@ -1,10 +1,10 @@
 import { simulateShot } from './simulate.js';
 import {
-  BALL_VALUES, COLOUR_ORDER, MIN_FOUL, MAX_BREAK, TABLE, BALL_RADIUS, BALL_DIAMETER, COLOURS,
+  BALL_VALUES, COLOUR_ORDER, MIN_FOUL, MAX_BREAK, BALL_RADIUS, BALL_DIAMETER,
   BAULK_LINE_X, D_RADIUS, CENTRE_Y,
 } from './constants.js';
 import {
-  ballById, redsOnTable, nextColourOn, respotColour, respotCueBall,
+  ballById, redsOnTable, nextColourOn, respotColour, respotRed, respotCueBall,
 } from './state.js';
 
 /** Centre of the cue ball on or behind the baulk line, within the D's semicircle. */
@@ -61,27 +61,12 @@ function ballOnValue(state) {
   return BALL_VALUES[state.ballOn] ?? MIN_FOUL;
 }
 
-function firstFreePointOnCentreLine(state, ignoreId) {
-  const pink = COLOURS.find((c) => c.color === 'pink').spot;
-  for (let x = pink.x; x < TABLE.width - BALL_RADIUS; x += BALL_RADIUS) {
-    const clear = !state.balls.some(
-      (b) => !b.potted && b.id !== ignoreId && Math.hypot(b.x - x, b.y - pink.y) < BALL_DIAMETER,
-    );
-    if (clear) return { x, y: pink.y };
-  }
-  return { x: pink.x, y: pink.y };
-}
-
 function respotBall(state, id) {
   const ball = ballById(state, id);
   if (!ball) return;
   ball.offTable = false;
-  if (isRed(id)) {
-    const spot = firstFreePointOnCentreLine(state, id);
-    Object.assign(ball, spot, { potted: false });
-    return;
-  }
-  respotColour(state, id);
+  if (isRed(id)) respotRed(state, id);
+  else respotColour(state, id);
 }
 
 function contactLegal(state, firstContact) {

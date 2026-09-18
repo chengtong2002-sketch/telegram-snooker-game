@@ -97,9 +97,8 @@ function spotFree(state, spot, ignoreId) {
 
 /**
  * Put a potted colour back. Own spot first; if occupied, the highest-value free
- * spot; if every spot is taken, as near its own spot as possible on its line
- * toward the top (black-end) cushion; if that whole line is blocked, as near as
- * possible on the other side of the spot. It never lands on another ball.
+ * spot; if every spot is taken, the nearest free point on its own spot's line
+ * (see nearestFreeOnLine). It never lands on another ball.
  */
 export function respotColour(state, colourId) {
   const ball = ballById(state, colourId);
@@ -117,21 +116,34 @@ export function respotColour(state, colourId) {
       return;
     }
   }
-  for (let x = own.x; x < TABLE.width - BALL_RADIUS; x += BALL_RADIUS) {
-    if (spotFree(state, { x, y: own.y }, colourId)) {
-      Object.assign(ball, { x, y: own.y, potted: false });
-      return;
-    }
+  Object.assign(ball, nearestFreeOnLine(state, own, colourId), { potted: false });
+}
+
+/**
+ * A red knocked off the table. There is no red spot, so it goes on the pink
+ * spot if free, otherwise as near to it as possible on the centre line — the
+ * same search a colour uses, so it never lands on another ball either.
+ */
+export function respotRed(state, redId) {
+  const ball = ballById(state, redId);
+  if (!ball) return;
+  const pink = COLOURS.find((c) => c.color === 'pink').spot;
+  Object.assign(ball, nearestFreeOnLine(state, pink, redId), { potted: false });
+}
+
+/**
+ * The free point nearest `spot` on its line: from the spot toward the top
+ * (black-end) cushion, then from the spot back toward baulk. Stopping at the
+ * spot after the first pass used to drop the ball on whatever blocked it.
+ */
+function nearestFreeOnLine(state, spot, ignoreId) {
+  for (let x = spot.x; x < TABLE.width - BALL_RADIUS; x += BALL_RADIUS) {
+    if (spotFree(state, { x, y: spot.y }, ignoreId)) return { x, y: spot.y };
   }
-  // Falling back to the own spot here used to drop the ball on top of whatever
-  // was blocking it.
-  for (let x = own.x - BALL_RADIUS; x > BALL_RADIUS; x -= BALL_RADIUS) {
-    if (spotFree(state, { x, y: own.y }, colourId)) {
-      Object.assign(ball, { x, y: own.y, potted: false });
-      return;
-    }
+  for (let x = spot.x - BALL_RADIUS; x > BALL_RADIUS; x -= BALL_RADIUS) {
+    if (spotFree(state, { x, y: spot.y }, ignoreId)) return { x, y: spot.y };
   }
-  Object.assign(ball, { x: own.x, y: own.y, potted: false }); // unreachable with 22 balls
+  return { x: spot.x, y: spot.y }; // unreachable with 22 balls
 }
 
 /** Cue ball back in hand, parked in the D until the player places it. */

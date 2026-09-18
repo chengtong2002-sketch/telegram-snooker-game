@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  newFrame, newMatch, resolveShot, advanceMatch, respotColour, ballById, chooseShot,
+  newFrame, newMatch, resolveShot, advanceMatch, respotColour, respotRed, ballById, chooseShot,
   defaultCuePlacement, cuePlacementProblem,
   POCKETS, COLOURS, TABLE, BALL_RADIUS, BALL_DIAMETER, CENTRE_Y,
 } from '../src/index.js';
@@ -194,6 +194,47 @@ test('respot: spots and the line to the top cushion all blocked → below the sp
   assert.equal(black.potted, false);
   assert.equal(black.y, spot.y);
   assert.ok(black.x < spot.x, `expected toward baulk, got x=${black.x}`);
+  assertNoOverlap(frame);
+});
+
+test('respot red: a red off the table goes on the pink spot when it is free', () => {
+  const frame = newFrame();
+  Object.assign(ballById(frame, 'pink'), { potted: true });
+  Object.assign(ballById(frame, 'red1'), { x: -10, y: -10 });
+  respotRed(frame, 'red1');
+  const red = ballById(frame, 'red1');
+  assert.deepEqual({ x: red.x, y: red.y, potted: red.potted }, { ...spotOf('pink'), potted: false });
+  assertNoOverlap(frame);
+});
+
+test('respot red: pink spot taken → next free point toward the top cushion', () => {
+  const frame = newFrame(); // pink is on its spot
+  Object.assign(ballById(frame, 'red1'), { x: -10, y: -10 });
+  respotRed(frame, 'red1');
+  const red = ballById(frame, 'red1');
+  assert.equal(red.y, spotOf('pink').y, 'stays on the centre line');
+  assert.ok(red.x > spotOf('pink').x, 'toward the top cushion');
+  assertNoOverlap(frame);
+});
+
+test('respot red: pink spot and the line to the top cushion all blocked → behind the pink, never overlapping', () => {
+  const frame = newFrame();
+  const spot = spotOf('pink');
+  frame.balls.forEach((b) => { if (b.id !== 'cue') b.potted = true; });
+  // Balls in a row from the pink spot to the top cushion.
+  const blockers = ['pink', 'black', 'blue', ...Array.from({ length: 14 }, (_, i) => `red${i + 2}`)];
+  let x = spot.x;
+  for (const id of blockers) {
+    if (x >= TABLE.width - BALL_RADIUS) break;
+    Object.assign(ballById(frame, id), { x, y: spot.y, potted: false });
+    x += BALL_DIAMETER;
+  }
+  assert.ok(x >= TABLE.width - BALL_RADIUS, 'precondition: the row must reach the top cushion');
+  Object.assign(ballById(frame, 'red1'), { x: -10, y: -10, potted: false });
+  respotRed(frame, 'red1');
+  const red = ballById(frame, 'red1');
+  assert.equal(red.y, spot.y);
+  assert.ok(red.x < spot.x, `expected toward baulk, got x=${red.x}`);
   assertNoOverlap(frame);
 });
 
