@@ -7,6 +7,16 @@ import { describeOutcome } from './hud.js';
 import { haptic } from './telegram.js';
 import * as api from './api.js';
 import { enqueue, flush, newResultId } from './offline.js';
+import { recordPracticeResult } from './settings.js';
+
+/**
+ * Live state the browser drivers read. Not used by the game itself.
+ *
+ * `shotsResolved` matters because a legal shot that pots nothing leaves the
+ * score, the ball on and the ball count all unchanged — indistinguishable from
+ * a shot that never happened if you only watch the HUD.
+ */
+const DEBUG = (window.__snookerDebug ??= { shotsResolved: 0 });
 
 const AI_THINK_MS = 900;
 const POLL_MS = 4000;
@@ -248,6 +258,7 @@ export class Game {
   }
 
   #applyLocalResult(frameState, outcome, wasMine) {
+    DEBUG.shotsResolved = (DEBUG.shotsResolved ?? 0) + 1;
     this.state = advanceMatch(this.state, frameState);
     const msg = describeOutcome(outcome, wasMine);
     this.hud.toast(msg.text, msg.kind);
@@ -556,15 +567,11 @@ export class Game {
       : '<p class="note">Practice frames are never reward-eligible. Play a PvP match to put a break on the board.</p>';
 
     if (this.mode === 'practice') {
-      // Analytics only — the server records it as explicitly non-eligible.
-      enqueue({
-        kind: 'practice-stat',
-        payload: {
-          framesWon: this.state.framesWon,
-          highBreak: myBest,
-          endedAt: Date.now(),
-        },
-      }).then(() => flush()).catch(() => {});
+      // Device-only, and deliberately not through the offline queue: that queue
+      // is the match-result channel, and practice must never travel on it.
+      // Practice also has to finish with no connection at all, which a queue
+      // flush cannot promise.
+      recordPracticeResult({ framesWon: this.state.framesWon, highBreak: myBest });
     }
 
     this.hud.modal({
@@ -593,6 +600,12 @@ export class Game {
     if (this.destroyed) return;
     if (this.state) {
       const balls = this.animBalls ?? this.frame.balls;
+      // Hook for the browser drivers (test/drive-*.mjs): it lets them tell a
+      // shot that actually resolved from one that silently did nothing, which
+      // the HUD text alone cannot always show.
+      DEBUG.ballsOnTable = this.frame.balls.length;
+      DEBUG.phase = this.phase;
+      DEBUG.mode = this.mode;
       this.renderer.draw({
         balls,
         ballOn: this.frame.ballOn,

@@ -1,4 +1,5 @@
 import { initData, themeUser } from './telegram.js';
+import { markOnline, markOffline } from './connection.js';
 
 const BASE = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:8080';
 
@@ -26,8 +27,13 @@ async function request(path, { method = 'GET', body, auth = true, timeout = 12_0
       signal: AbortSignal.timeout(timeout),
     });
   } catch (err) {
+    // Never reached the server: the most trustworthy offline signal there is.
+    markOffline();
     throw new ApiError(err.name === 'TimeoutError' ? 'request timed out' : 'network unavailable', 0);
   }
+
+  // It answered — even a 4xx/5xx proves the connection is back.
+  markOnline();
 
   const text = await res.text();
   let json = {};
@@ -85,6 +91,9 @@ export const sendShot = (matchId, resultId, shot) =>
 export const syncResults = (results) => request('/sync', { method: 'POST', body: { results } });
 
 export const leaderboard = (scope = 'period') => request(`/leaderboard?scope=${scope}`);
+
+/** Career totals plus today's eligible-match allowance, for the lobby. */
+export const stats = () => request('/stats');
 
 export const walletChallenge = () => request('/wallet/challenge');
 export const walletInfo = () => request('/wallet');

@@ -78,7 +78,10 @@ export function launchParams() {
     params.set('match', fromStartParam.slice(4));
   }
   return {
-    mode: params.get('mode') ?? 'practice',
+    // null means "opened with no deep link", which lands on the lobby. Every
+    // bot button sets mode (or screen), so those still go straight to the mode
+    // they name and never see the lobby.
+    mode: params.get('mode'),
     matchId: params.get('match') ?? null,
     screen: params.get('screen') ?? null,
   };

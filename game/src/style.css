@@ -285,6 +285,147 @@ html, body {
 
 .note { font-size: 11px; color: var(--muted); margin-top: 10px; line-height: 1.45; }
 
+/* ---------- lobby ---------- */
+
+/* Over the table, under #overlay (40) so How to play / Settings / Rewards open
+   as normal sheets on top of it. */
+#lobby {
+  position: absolute; inset: 0; z-index: 30;
+  background: var(--bg);
+  display: grid; place-items: center;
+  padding: calc(var(--corner-t) + 10px) calc(16px + var(--safe-r)) calc(12px + var(--safe-b)) calc(16px + var(--safe-l));
+  overflow: auto;
+  touch-action: pan-y;
+}
+/* Same trap as #overlay: an id with its own display outranks the UA's
+   [hidden] rule, and the lobby would cover the table forever. */
+#lobby[hidden] { display: none; }
+
+.lobby-inner {
+  width: min(420px, 100%);
+  display: flex; flex-direction: column; gap: 10px;
+}
+
+.lobby-head { display: flex; align-items: center; gap: 12px; }
+.lobby-avatar {
+  width: 52px; height: 52px;
+  font-size: 18px;
+  border-color: var(--accent);
+  flex: 0 0 auto;
+}
+.lobby-who { display: flex; flex-direction: column; min-width: 0; }
+.lobby-name {
+  font-size: 20px; font-weight: 800;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.lobby-sub { font-size: 12px; color: var(--muted); }
+
+.stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--gap); }
+.stat {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 12px; padding: 10px 6px;
+  text-align: center; min-width: 0;
+}
+.stat b {
+  display: block;
+  font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.stat span {
+  display: block; margin-top: 2px;
+  font-size: 10px; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .4px;
+}
+
+.cap-line {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 12px; color: var(--muted);
+  margin-top: 2px;
+}
+.cap-line b { color: var(--text); font-size: 14px; font-variant-numeric: tabular-nums; }
+.cap-bar {
+  height: 5px; border-radius: 999px;
+  background: var(--panel); border: 1px solid var(--line);
+  overflow: hidden;
+}
+.cap-fill {
+  height: 100%; width: 0;
+  background: var(--accent);
+  transition: width .25s ease;
+}
+/* Nearly used up: the same warn/danger ramp the shot clock uses. */
+.cap-fill.warn { background: var(--warn); }
+.cap-fill.spent { background: var(--danger); }
+.cap-note { margin: 0; font-size: 11px; line-height: 1.4; color: var(--muted); }
+.cap-note:empty { display: none; }
+
+.lobby-primary {
+  margin-top: 4px;
+  min-height: 56px;
+  border: none; border-radius: 14px;
+  background: var(--accent); color: #06110c;
+  font-weight: 800; font-size: 18px; letter-spacing: 1px;
+  box-shadow: 0 4px 14px rgba(0,0,0,.45);
+  cursor: pointer;
+}
+.lobby-primary:active { transform: translateY(1px); }
+.lobby-primary:disabled { background: #2c3a34; color: var(--muted); box-shadow: none; }
+
+.lobby-btn {
+  min-height: 44px;
+  border: 1px solid var(--line); border-radius: 12px;
+  background: var(--panel); color: var(--text);
+  font-weight: 700; font-size: 14px;
+  cursor: pointer;
+}
+.lobby-btn:active { background: var(--line); }
+
+.offline-chip {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .5px;
+  color: var(--warn);
+  border: 1px solid var(--warn); border-radius: 999px;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+.offline-chip[hidden] { display: none; }
+
+.offline-note {
+  margin: 0;
+  font-size: 11px; line-height: 1.4;
+  color: var(--warn);
+  text-align: center;
+}
+.offline-note[hidden] { display: none; }
+
+/* Greyed out because there is no connection, not because they are busy. */
+.lobby-btn:disabled, .lobby-primary:disabled {
+  opacity: .45;
+  cursor: default;
+}
+.lobby-btn:disabled:active { background: var(--panel); }
+
+.lobby-grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: var(--gap); }
+.lobby-grid .lobby-btn { font-size: 13px; }
+#lobby-settings { width: 46px; font-size: 16px; }
+
+/* A landscape phone is ~350px tall: give up the decorative height so PLAY stays
+   on screen without scrolling. Keyed to height, not orientation, because a
+   browser toolbar shrinks the viewport the same way. */
+@media (max-height: 420px) {
+  .lobby-inner { gap: 7px; }
+  .lobby-avatar { width: 40px; height: 40px; font-size: 15px; }
+  .lobby-name { font-size: 17px; }
+  .stat { padding: 6px 6px; }
+  .stat b { font-size: 17px; }
+  .lobby-primary { min-height: 46px; font-size: 16px; }
+  .lobby-btn { min-height: 38px; }
+  .cap-note { display: none; }
+}
+
 /* ---------- portrait guard ---------- */
 
 #rotate { display: none; }

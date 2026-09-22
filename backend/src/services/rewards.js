@@ -55,6 +55,33 @@ export async function dailyLimitReason(userId, opponentId, day, db = getDb()) {
   return null;
 }
 
+/**
+ * How much of today's eligible-match allowance the player has used, for the
+ * lobby's "matches left" line. Counts the same rows `dailyLimitReason` counts,
+ * so the number shown and the limit enforced can never drift apart.
+ *
+ * An exempt test account has no cap: `remaining` is null rather than a number,
+ * which the client renders as "unlimited" instead of pretending 15.
+ */
+export async function dailyEligibleUsage(userId, { now = new Date(), db = getDb() } = {}) {
+  const day = utcDay(now);
+  const exempt = await isLimitExempt(userId, db);
+  const row = await db('eligible_breaks')
+    .where({ user_id: userId, award_day: day })
+    .count({ n: 'id' })
+    .first();
+  const used = Number(row?.n ?? 0);
+  return {
+    day,
+    used,
+    exempt,
+    cap: exempt ? null : DAILY_ELIGIBLE_MATCH_CAP,
+    remaining: exempt ? null : Math.max(0, DAILY_ELIGIBLE_MATCH_CAP - used),
+    // Sent so the lobby can state the rule without hardcoding the number.
+    pairCap: exempt ? null : DAILY_PAIR_MATCH_CAP,
+  };
+}
+
 /** UTC window for the configured period kind. */
 export function periodWindow(kind = config.rewards.periodKind, now = new Date()) {
   const start = new Date(Date.UTC(
