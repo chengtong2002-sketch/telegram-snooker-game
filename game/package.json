@@ -10,6 +10,7 @@
     "preview": "vite preview --host",
     "smoke": "node test/drive-practice.mjs",
     "smoke:concede": "node test/drive-concede.mjs",
+    "smoke:offline": "node test/drive-offline.mjs",
     "start": "serve -s dist --no-port-switching"
   },
   "dependencies": {

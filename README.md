@@ -85,13 +85,14 @@ The project was built in this order, and each stage is working:
 2. **Physics and UI, practice first** — Matter.js, full 22-ball table, AI opponent.
 3. **Backend, fouls and scoring** — server-side resolution for every PvP shot.
 4. **PvP matchmaking** — FIFO open queue, async turns, "your turn" push.
-5. **Jetton + wallet** — deploy script ready; TON Connect linking with verified proofs.
+5. **Jetton + wallet** — SNKR deployed on testnet; TON Connect linking with verified proofs.
 6. **Offline sync** — IndexedDB + CloudStorage queue, dedupe by result ID.
 7. **Integration testing** — 191 automated tests across the stack (193 on Postgres).
 
-Still to do before a demo: deploy the Jetton to testnet with a funded wallet
-(`npm run deploy -w @snooker/token`), deploy the three services to Railway, and
-play a real two-device match end to end.
+Still to do before a demo: deploy the three services to Railway, play a real
+two-device match end to end, and drive one reward the whole way on testnet — a
+real match, then a claim, then `npm run payout -w @snooker/token -- --send`.
+Minting itself has been exercised on testnet from a seeded redemption.
 
 ## The game
 
@@ -317,14 +318,24 @@ backend's, and the backend needs the bot's — so do it in two passes.
 npm test                              # everything
 npm test -w @snooker/sim              # physics determinism, foul table, frame flow
 npm test -w @snooker/backend          # rewards maths, PvP API, ton_proof verification
+npm test -w @snooker/token            # settlement: no double-send, no overspend
 npm run smoke:game                    # drives a practice frame in a real browser
+npm run smoke:concede -w @snooker/game   # both PvP concede paths, two players at once
+npm run smoke:offline -w @snooker/game   # the offline story; practice makes no requests
 ```
 
-`smoke:game` is separate because it needs the backend and vite running plus an
-installed Chrome. It opens the Mini App, places the cue ball, plays several
-shots against the AI, and fails on any console error, uncaught exception or
-failed request — the class of bug unit tests cannot see because it only appears
-when the renderer, controls and game loop run together.
+The smokes are separate because they each need the backend and vite running plus
+an installed Chrome. `smoke:game` opens the Mini App, places the cue ball, plays
+several shots against the AI, and fails on any console error, uncaught exception
+or failed request — the class of bug unit tests cannot see because it only
+appears when the renderer, controls and game loop run together.
+
+`smoke:concede` drives two browsers at once through the between-frame checkpoint
+and the mid-frame Concede button; it writes match state directly, so point it and
+the backend at a throwaway `DATABASE_URL`, never the dev database.
+`smoke:offline` drops and restores the connection around the lobby and a
+practice frame, counting every `/api` request so a practice frame that quietly
+phones home fails the run.
 
 The unit suite covers the things that would actually cost money if they broke:
 the budget can't be overspent, a player can't exceed their share cap, a
