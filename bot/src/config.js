@@ -15,7 +15,13 @@ for (const dir of ['..', '../..']) {
 const num = (v, fallback) => (v === undefined || v === '' ? fallback : Number(v));
 
 export const config = {
-  botToken: process.env.BOT_TOKEN ?? '',
+  // Trimmed, and not just for tidiness. The token is the HMAC key for every
+  // initData check (see auth.js), so one trailing newline from a copy-paste
+  // changes the key and rejects every real sign-in with "bad signature" --
+  // while the Bot API itself keeps working, because a URL drops trailing
+  // control characters. That asymmetry (bot fine, Mini App broken) cost a
+  // deploy on Railway; a token never legitimately has whitespace.
+  botToken: (process.env.BOT_TOKEN ?? '').trim(),
   // Public HTTPS URL of the built Mini App (/game). Telegram will not open http://.
   gameUrl: process.env.GAME_URL ?? '',
   backendUrl: process.env.BACKEND_URL ?? 'http://localhost:8080',

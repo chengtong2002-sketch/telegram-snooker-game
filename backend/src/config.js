@@ -20,7 +20,13 @@ export const config = {
   port: num(process.env.PORT, 8080),
   nodeEnv: process.env.NODE_ENV ?? 'development',
 
-  botToken: process.env.BOT_TOKEN ?? '',
+  // Trimmed, and not just for tidiness. The token is the HMAC key for every
+  // initData check (see auth.js), so one trailing newline from a copy-paste
+  // changes the key and rejects every real sign-in with "bad signature" --
+  // while the Bot API itself keeps working, because a URL drops trailing
+  // control characters. That asymmetry (bot fine, Mini App broken) cost a
+  // deploy on Railway; a token never legitimately has whitespace.
+  botToken: (process.env.BOT_TOKEN ?? '').trim(),
   jwtSecret: process.env.JWT_SECRET ?? 'dev-only-insecure-secret',
   jwtTtl: process.env.JWT_TTL ?? '12h',
 

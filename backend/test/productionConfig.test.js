@@ -75,3 +75,22 @@ test('the backend refuses to boot on Railway with a pasted local .env', () => {
     assert.match(output, new RegExp(name), `${name} is named in the refusal`);
   }
 });
+
+/**
+ * A token pasted into a dashboard or piped from a file often carries a trailing
+ * newline. The Bot API survives it -- a URL drops trailing control characters --
+ * so the bot answers /start normally while the same token, used raw as the HMAC
+ * key, rejects every Mini App sign-in with "bad signature". That asymmetry is
+ * what made it hard to spot on Railway, so both configs trim what they read.
+ */
+test('a BOT_TOKEN with surrounding whitespace is trimmed, so the HMAC key is right', () => {
+  const result = spawnSync(process.execPath, [path.join(here, 'trimmedToken.probe.mjs')], {
+    env: {
+      PATH: process.env.PATH,
+      SystemRoot: process.env.SystemRoot,
+      BOT_TOKEN: '  123456:TEST-token\n',
+    },
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 0, result.stderr);
+});
