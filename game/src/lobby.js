@@ -31,6 +31,7 @@ function elements() {
       matches: $('stat-matches'),
       best: $('stat-break'),
       capValue: $('cap-value'),
+      capLine: $('cap-line'),
       capBar: $('cap-bar'),
       capFill: $('cap-fill'),
       capNote: $('cap-note'),
@@ -54,6 +55,22 @@ function paintPlayer(el, me) {
   paintSub(el);
 }
 
+/**
+ * Write the allowance line as an optional bold count plus its sentence, built
+ * as nodes rather than innerHTML so the number is emphasised without ever
+ * putting a server value through the HTML parser.
+ */
+function setCapText(el, count, rest) {
+  const nodes = [];
+  if (count !== null) {
+    const b = document.createElement('b');
+    b.textContent = String(count);
+    nodes.push(b);
+  }
+  nodes.push(document.createTextNode(rest));
+  el.capValue.replaceChildren(...nodes);
+}
+
 /** The device's own practice record — the one line that needs no connection. */
 function paintSub(el) {
   const rec = practiceRecord();
@@ -70,13 +87,21 @@ function paintStats(el, stats) {
 
   const { cap, remaining } = stats.daily ?? {};
   el.capBar.hidden = false;
+  el.capLine.className = 'cap-line';
   if (cap === null || cap === undefined) {
     // Exempt test account: no cap to show, so do not imply one.
-    el.capValue.textContent = 'unlimited';
+    setCapText(el, null, 'Unlimited matches today');
     el.capFill.style.width = '100%';
     el.capFill.className = 'cap-fill';
   } else {
-    el.capValue.textContent = `${remaining}/${cap}`;
+    // Phrased as an allowance remaining. "15/15" beside a full bar read as a
+    // meter that had filled up — i.e. the opposite of what it meant.
+    if (remaining === 0) {
+      setCapText(el, null, 'No matches left today');
+      el.capLine.className = 'cap-line spent';
+    } else {
+      setCapText(el, remaining, ` match${remaining === 1 ? '' : 'es'} left today`);
+    }
     el.capFill.style.width = `${Math.round((remaining / cap) * 100)}%`;
     el.capFill.className = `cap-fill${remaining === 0 ? ' spent' : remaining <= 3 ? ' warn' : ''}`;
   }
@@ -89,6 +114,7 @@ function paintStats(el, stats) {
 function paintStatsUnavailable(el, note = 'Stats are unavailable — you can still play.') {
   for (const key of ['points', 'matches', 'best']) el[key].textContent = '–';
   el.capValue.textContent = '–';
+  el.capLine.className = 'cap-line';
   // Hidden rather than emptied: the fill animates, so a bar left on screen
   // keeps showing the old allowance for a moment next to a value reading "–".
   el.capBar.hidden = true;

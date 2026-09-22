@@ -69,6 +69,21 @@
            upright, so it is not behind the #rotate guard. -->
       <section id="lobby" hidden>
         <div class="lobby-inner">
+          <div class="lobby-logo">
+            <!-- A red, drawn to match the renderer's ball shading (#c8202a). -->
+            <svg class="logo-ball" viewBox="0 0 32 32" aria-hidden="true">
+              <defs>
+                <radialGradient id="logo-red" cx="36%" cy="30%" r="72%">
+                  <stop offset="0" stop-color="#ff938c" />
+                  <stop offset="45%" stop-color="#c8202a" />
+                  <stop offset="1" stop-color="#6d0d13" />
+                </radialGradient>
+              </defs>
+              <circle cx="16" cy="16" r="15" fill="url(#logo-red)" />
+            </svg>
+            <span class="logo-word">Snooker</span>
+          </div>
+
           <header class="lobby-head">
             <div class="avatar lobby-avatar" id="lobby-avatar">?</div>
             <div class="lobby-who">
@@ -93,9 +108,10 @@
             </div>
           </div>
 
+          <!-- Reads as an allowance remaining ("15 matches left today"), not as
+               a progress bar filling up toward a limit. -->
           <div class="cap-line" id="cap-line">
-            <span>Today's eligible matches</span>
-            <b id="cap-value">–</b>
+            <span id="cap-value">–</span>
           </div>
           <div class="cap-bar" id="cap-bar"><div class="cap-fill" id="cap-fill"></div></div>
           <p class="cap-note" id="cap-note"></p>
@@ -104,7 +120,14 @@
           <button id="lobby-practice" class="lobby-btn">Practice</button>
 
           <div class="lobby-grid">
-            <button id="lobby-rewards" class="lobby-btn">👛 Rewards</button>
+            <button id="lobby-rewards" class="lobby-btn">
+              <!-- A token, in currentColor so it dims with the button offline. -->
+              <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2" />
+                <circle cx="12" cy="12" r="3.5" fill="currentColor" />
+              </svg>
+              Rewards
+            </button>
             <button id="lobby-rules" class="lobby-btn">How to play</button>
             <button id="lobby-settings" class="lobby-btn" aria-label="Settings">⚙</button>
           </div>

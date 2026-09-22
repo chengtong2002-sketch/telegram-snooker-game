@@ -306,6 +306,17 @@ html, body {
   display: flex; flex-direction: column; gap: 10px;
 }
 
+.lobby-logo {
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  margin-bottom: 2px;
+}
+.logo-ball { width: 26px; height: 26px; flex: 0 0 auto; }
+.logo-word {
+  font-size: 22px; font-weight: 800;
+  letter-spacing: 3px; text-transform: uppercase;
+  color: var(--text);
+}
+
 .lobby-head { display: flex; align-items: center; gap: 12px; }
 .lobby-avatar {
   width: 52px; height: 52px;
@@ -339,11 +350,13 @@ html, body {
 }
 
 .cap-line {
-  display: flex; justify-content: space-between; align-items: baseline;
   font-size: 12px; color: var(--muted);
   margin-top: 2px;
 }
 .cap-line b { color: var(--text); font-size: 14px; font-variant-numeric: tabular-nums; }
+/* Nothing left: the sentence itself carries the warning, so it stops reading
+   as a neutral count. */
+.cap-line.spent { color: var(--warn); }
 .cap-bar {
   height: 5px; border-radius: 999px;
   background: var(--panel); border: 1px solid var(--line);
@@ -412,11 +425,17 @@ html, body {
 .lobby-grid .lobby-btn { font-size: 13px; }
 #lobby-settings { width: 46px; font-size: 16px; }
 
+/* Buttons carrying an icon centre it with their label. */
+#lobby-rewards { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.btn-icon { width: 16px; height: 16px; flex: 0 0 auto; }
+
 /* A landscape phone is ~350px tall: give up the decorative height so PLAY stays
    on screen without scrolling. Keyed to height, not orientation, because a
    browser toolbar shrinks the viewport the same way. */
 @media (max-height: 420px) {
   .lobby-inner { gap: 7px; }
+  .logo-ball { width: 20px; height: 20px; }
+  .logo-word { font-size: 17px; letter-spacing: 2px; }
   .lobby-avatar { width: 40px; height: 40px; font-size: 15px; }
   .lobby-name { font-size: 17px; }
   .stat { padding: 6px 6px; }
