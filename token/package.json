@@ -13,6 +13,7 @@
     "test": "node --import tsx --test \"test/**/*.test.mts\""
   },
   "dependencies": {
+    "@orbs-network/ton-access": "^2.3.3",
     "@snooker/db": "*",
     "@ton-community/assets-sdk": "^0.0.5",
     "@ton/core": "^0.63.1",

@@ -46,6 +46,30 @@ export const jettonMaster = (): string => required('JETTON_MASTER_ADDRESS');
 // how the testnet master ended up with image "" stored on-chain.
 const envOr = (name: string, fallback?: string) => process.env[name]?.trim() || fallback;
 
+/**
+ * A dedicated RPC v4 endpoint. Empty falls back to the public Orbs ton-access
+ * pool, which is fine for testnet and is not what a mainnet payout should
+ * depend on -- see the note on the timeout below.
+ */
+export const rpcEndpoint = (): string | undefined => envOr('TON_RPC_ENDPOINT');
+
+/**
+ * The assets-sdk builds its own client with a fixed 15s timeout, which the
+ * public pool does not reliably beat on a send. That matters more here than
+ * anywhere else: a mint that times out mid-send leaves the redemption
+ * `unconfirmed`, and an unconfirmed row blocks every later payout until an
+ * operator has checked the chain by hand. Hence a generous default.
+ */
+export const rpcTimeoutMs = (): number => {
+  const raw = process.env.TON_RPC_TIMEOUT_MS?.trim();
+  if (!raw) return 60_000;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`TON_RPC_TIMEOUT_MS must be a positive number of milliseconds, got "${raw}"`);
+  }
+  return value;
+};
+
 export const jettonMeta = () => ({
   name: envOr('JETTON_NAME', 'Snooker Points')!,
   symbol: envOr('JETTON_SYMBOL', 'SNKR')!,

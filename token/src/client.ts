@@ -1,18 +1,33 @@
 import { mnemonicToPrivateKey } from '@ton/crypto';
 import { TonClient4, WalletContractV4, WalletContractV5R1 } from '@ton/ton';
-import { AssetsSDK, createApi, NoopStorage } from '@ton-community/assets-sdk';
+import { AssetsSDK, NoopStorage } from '@ton-community/assets-sdk';
+import { getHttpV4Endpoint } from '@orbs-network/ton-access';
 import type { Address, OpenedContract, Sender } from '@ton/core';
-import { network, mnemonic, walletVersion, assertNetworkConfirmed, type Network } from './env.js';
+import {
+  network, mnemonic, walletVersion, assertNetworkConfirmed, rpcEndpoint, rpcTimeoutMs, type Network,
+} from './env.js';
 
 type TreasuryWallet = WalletContractV4 | WalletContractV5R1;
 
 export interface Treasury {
   sdk: AssetsSDK;
-  api: Awaited<ReturnType<typeof createApi>>;
+  api: TonClient4;
   wallet: OpenedContract<TreasuryWallet>;
   sender: Sender;
   address: string;
   network: 'testnet' | 'mainnet';
+}
+
+/**
+ * The API client, built here rather than with the SDK's createApi, which pins
+ * `timeout: 15000` at whatever endpoint the public Orbs pool hands out and
+ * exposes no way to change either. Both are worth controlling: see
+ * rpcTimeoutMs in env.ts for why a send in particular must not time out, and
+ * rpcEndpoint for pointing a mainnet treasury at an RPC we actually pay for.
+ */
+export async function createApi(net: Network): Promise<TonClient4> {
+  const endpoint = rpcEndpoint() ?? await getHttpV4Endpoint({ network: net });
+  return new TonClient4({ endpoint, timeout: rpcTimeoutMs() });
 }
 
 /**
@@ -29,7 +44,7 @@ export async function openTreasury(): Promise<Treasury> {
   const api = await createApi(net);
   const keyPair = await mnemonicToPrivateKey(mnemonic());
 
-  const wallet = (api as unknown as TonClient4).open(
+  const wallet = api.open(
     createWallet(net, keyPair.publicKey),
   ) as OpenedContract<TreasuryWallet>;
 
