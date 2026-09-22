@@ -9,6 +9,14 @@ const pkgRoot = path.resolve(here, '..');
  * One knex config for both engines. SQLite is the default so a clone runs with
  * no services; set DATABASE_URL to a postgres:// URL and the same migrations
  * and queries run unchanged on Railway Postgres.
+ *
+ * better-sqlite3 is an *optional* dependency, deliberately. It is a native
+ * module with no prebuild for every Node version, and the Railway build image
+ * has no Python for node-gyp to fall back on -- so a required dependency there
+ * failed `npm ci` for all three services, none of which use SQLite. Knex only
+ * loads the driver named below, so on Postgres it is never touched, and npm
+ * skipping a failed optional install costs deployment nothing. Never move it
+ * back into dependencies.
  */
 export function knexConfig() {
   const url = process.env.DATABASE_URL ?? '';

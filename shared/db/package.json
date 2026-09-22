@@ -5,16 +5,21 @@
   "private": true,
   "description": "Knex schema + accessors shared by the bot and the backend. SQLite now, Postgres by changing DATABASE_URL.",
   "main": "src/index.js",
-  "exports": { ".": "./src/index.js", "./testing": "./src/testing.js" },
+  "exports": {
+    ".": "./src/index.js",
+    "./testing": "./src/testing.js"
+  },
   "scripts": {
     "migrate": "knex --knexfile knexfile.js migrate:latest",
     "rollback": "knex --knexfile knexfile.js migrate:rollback",
     "seed:periods": "node src/seedPeriod.js"
   },
   "dependencies": {
-    "better-sqlite3": "^13.0.3",
     "knex": "^3.1.0",
     "pg": "^8.13.0"
+  },
+  "optionalDependencies": {
+    "better-sqlite3": "^13.0.3"
   },
   "devDependencies": {
     "knex": "^3.1.0"
