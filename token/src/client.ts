@@ -96,6 +96,9 @@ export async function jettonBalance(treasury: Treasury, master: Address, owner: 
 export const explorerUrl =(net: 'testnet' | 'mainnet', address: string) =>
   `https://${net === 'testnet' ? 'testnet.' : ''}tonviewer.com/${address}`;
 
+export const explorerTxUrl = (net: 'testnet' | 'mainnet', hash: string) =>
+  `https://${net === 'testnet' ? 'testnet.' : ''}tonviewer.com/transaction/${hash}`;
+
 /** Poll until the wallet's seqno advances, i.e. the message actually landed. */
 export async function waitForSeqno(treasury: Treasury, before: number, timeoutMs = 90_000) {
   const deadline = Date.now() + timeoutMs;
@@ -105,4 +108,48 @@ export async function waitForSeqno(treasury: Treasury, before: number, timeoutMs
     if (now > before) return true;
   }
   return false;
+}
+
+/**
+ * A pointer to the treasury's latest transaction, which is also how the v4 API
+ * wants to be asked for the ones before it. Null means the account has never
+ * had a transaction at all.
+ */
+export async function accountCursor(treasury: Treasury): Promise<{ lt: bigint; hash: Buffer } | null> {
+  const { last } = await treasury.api.getLastBlock();
+  const { account } = await treasury.api.getAccountLite(last.seqno, treasury.wallet.address);
+  if (!account.last) return null;
+  return { lt: BigInt(account.last.lt), hash: Buffer.from(account.last.hash, 'base64') };
+}
+
+/**
+ * The hash of the transaction a treasury send produced, found by reading the
+ * account back afterwards.
+ *
+ * `sendMint` and friends hand back nothing -- the SDK's sender signs an external
+ * message and drops it -- so the only way to get a real, explorer-checkable
+ * identifier is to look at what the account actually did. Every send from this
+ * wallet arrives as an `external-in`, so the first one newer than a cursor taken
+ * before the send is ours. Sends are serial and each is confirmed before the
+ * next starts, so there is never more than one candidate.
+ *
+ * Returning null is a real answer, not an error: it means nothing has landed
+ * yet. The caller reads that as "unconfirmed", never as "safe to send again".
+ */
+export async function findSentTransaction(
+  treasury: Treasury,
+  since: { lt: bigint } | null,
+): Promise<{ hash: string; lt: string } | null> {
+  const sinceLt = since?.lt ?? 0n;
+  const cursor = await accountCursor(treasury);
+  if (!cursor || cursor.lt <= sinceLt) return null;
+
+  const txs = await treasury.api.getAccountTransactions(treasury.wallet.address, cursor.lt, cursor.hash);
+  for (const { tx } of txs) { // newest first
+    if (tx.lt <= sinceLt) break;
+    if (tx.inMessage?.info.type === 'external-in') {
+      return { hash: tx.hash().toString('hex'), lt: tx.lt.toString() };
+    }
+  }
+  return null;
 }

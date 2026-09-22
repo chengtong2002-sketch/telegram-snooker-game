@@ -3,11 +3,16 @@
  * the parts that decide "is it safe to send this?" can be tested on SQLite.
  *
  *   pending ──claim──▶ sending ──landed──▶ sent
- *      ▲                  │
+ *      ▲                  │                 ▲
  *      │ (nothing was     ├──bad address / zero amount──▶ failed
- *      │  broadcast)      │
- *      └────release───────┤
+ *      │  broadcast)      │                 │ (found on chain)
+ *      └────release───────┤                 │
  *                         └──timeout / error during send──▶ unconfirmed
+ *
+ * The payout script reads the treasury account back before giving up, so a send
+ * that landed despite a timeout or an error settles as `sent` with its real
+ * transaction hash. That check only ever moves a row towards `sent`: a row it
+ * cannot confirm stays `unconfirmed` and waits for a person.
  *
  * The rule the whole thing exists for: once a mint *may* have been broadcast,
  * the row never goes back to `pending` automatically. `unconfirmed` (or a
@@ -68,11 +73,16 @@ export const markUnconfirmed = (knex: Knex, id: number, error: string) => knex('
  * Operator resolution after checking the explorer.
  *  - `sent`:    the mint is on-chain.
  *  - `pending`: it definitely is not, so it may be sent again.
+ *
+ * `txHash` is the transaction the operator was looking at when they decided.
+ * It is optional, because they may have only the recipient to go on, but a row
+ * resolved without one says so rather than implying a hash nobody holds.
  */
 export async function resolveByOperator(
   knex: Knex,
   id: number,
   outcome: 'sent' | 'pending',
+  txHash?: string | null,
 ): Promise<{ ok: boolean; reason?: string }> {
   const row: RedemptionRow | undefined = await knex('redemptions').where({ id }).first();
   if (!row) return { ok: false, reason: `no redemption #${id}` };
@@ -80,7 +90,7 @@ export async function resolveByOperator(
     return { ok: false, reason: `#${id} is ${row.status}; only sending/unconfirmed rows can be resolved` };
   }
   const patch = outcome === 'sent'
-    ? { status: 'sent', error: null, tx_hash: 'confirmed-by-operator', settled_at: new Date() }
+    ? { status: 'sent', error: null, tx_hash: txHash || 'confirmed-by-operator', settled_at: new Date() }
     : { status: 'pending', error: null };
   const updated = await knex('redemptions').where({ id, status: row.status }).update(patch);
   return updated === 1 ? { ok: true } : { ok: false, reason: `#${id} changed while resolving; re-run` };

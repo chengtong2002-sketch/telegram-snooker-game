@@ -100,3 +100,17 @@ test('the budget check counts every non-failed row and flags an overspent period
   [check] = await s.budgetChecks(knex, [periodId]);
   assert.equal(check.over, true);
 });
+
+test('an operator resolution records the hash they checked, or says it has none', async () => {
+  await clear();
+  const withHash = await redemption({ status: 'unconfirmed' });
+  const without = await redemption({ status: 'unconfirmed' });
+  const hash = 'a37688e6a7539206b03ea34b6e81c459c519ecb9fc11f8c6d2995f519d7099e2';
+
+  assert.deepEqual(await s.resolveByOperator(knex, withHash, 'sent', hash), { ok: true });
+  assert.equal((await knex('redemptions').where({ id: withHash }).first()).tx_hash, hash);
+
+  // No hash is honest about being a human call; it must not invent one.
+  assert.deepEqual(await s.resolveByOperator(knex, without, 'sent'), { ok: true });
+  assert.equal((await knex('redemptions').where({ id: without }).first()).tx_hash, 'confirmed-by-operator');
+});

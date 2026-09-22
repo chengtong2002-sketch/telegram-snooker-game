@@ -43,7 +43,7 @@ Requires Node 20+.
 npm install
 cp .env.example .env          # then fill it in — see the comments in that file
 npm run migrate               # creates ./data/snooker.sqlite
-npm test                      # 192 tests: physics, foul rules, rewards, API, wallet proofs
+npm test                      # 200 tests: physics, foul rules, rewards, API, wallet proofs
 ```
 
 ### Run it locally
@@ -87,7 +87,7 @@ The project was built in this order, and each stage is working:
 4. **PvP matchmaking** — FIFO open queue, async turns, "your turn" push.
 5. **Jetton + wallet** — SNKR deployed on testnet; TON Connect linking with verified proofs.
 6. **Offline sync** — IndexedDB + CloudStorage queue, dedupe by result ID.
-7. **Integration testing** — 192 automated tests across the stack (194 on Postgres).
+7. **Integration testing** — 200 automated tests across the stack (202 on Postgres).
 
 Still to do before a demo: deploy the three services to Railway, play a real
 two-device match end to end, and drive one reward the whole way on testnet — a
@@ -169,11 +169,20 @@ unless passed `--send`. Paying out is deliberately a human-run step, not
 something an HTTP request can trigger.
 
 A mint that may have gone out is never retried automatically. If confirmation
-times out or the send errors, the redemption is marked `unconfirmed` and
-`--send` refuses to run until someone checks the recipient on the explorer and
-resolves it with `-- --mark-sent <id>` (it landed) or `-- --requeue <id>` (it
-did not). Rows are claimed atomically, so two overlapping runs cannot pay the
-same one, and a period whose committed tokens exceed its budget is not paid.
+times out or the send errors, the payout script reads the treasury account back
+to see whether a transaction actually appeared after the send. If one did, the
+redemption settles with that transaction hash; if not, it is marked
+`unconfirmed` and `--send` refuses to run until someone checks the recipient on
+the explorer and resolves it with `-- --mark-sent <id> [tx hash]` (it landed) or
+`-- --requeue <id>` (it did not). That lookup can only move a row towards
+`sent`, never back to `pending`, so it can cost a manual check but never a
+double payment. Rows are claimed atomically, so two overlapping runs cannot pay
+the same one, and a period whose committed tokens exceed its budget is not paid.
+
+A settled redemption records the real transaction hash, which is what the
+explorer takes: `https://testnet.tonviewer.com/transaction/<hash>`. The SDK
+hands nothing back from a send, so the hash comes from reading the account
+afterwards and picking the `external-in` the treasury signed.
 
 ## Token
 
