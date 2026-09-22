@@ -43,7 +43,7 @@ Requires Node 20+.
 npm install
 cp .env.example .env          # then fill it in — see the comments in that file
 npm run migrate               # creates ./data/snooker.sqlite
-npm test                      # 40 tests: physics, foul rules, rewards, API, wallet proofs
+npm test                      # 191 tests: physics, foul rules, rewards, API, wallet proofs
 ```
 
 ### Run it locally
@@ -87,7 +87,7 @@ The project was built in this order, and each stage is working:
 4. **PvP matchmaking** — FIFO open queue, async turns, "your turn" push.
 5. **Jetton + wallet** — deploy script ready; TON Connect linking with verified proofs.
 6. **Offline sync** — IndexedDB + CloudStorage queue, dedupe by result ID.
-7. **Integration testing** — 40 automated tests across the stack.
+7. **Integration testing** — 191 automated tests across the stack (193 on Postgres).
 
 Still to do before a demo: deploy the Jetton to testnet with a funded wallet
 (`npm run deploy -w @snooker/token`), deploy the three services to Railway, and
