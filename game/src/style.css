@@ -329,19 +329,34 @@ html, body {
   overflow: auto;
   touch-action: pan-y;
 
-  /* Three layers, front to back: a felt grain, a vignette that closes the
-     corners down, and the pool of light the card sits in. The grain is inline
-     SVG turbulence — a few hundred bytes of CSS, no request and no file, and
-     the browser rasterises the 120px tile once and repeats it. The flat colour
-     underneath keeps the screen dark if a webview declines the filter. */
+  /* The flat colour is what shows while the photo loads, or if it never does. */
   background-color: #050b08;
-  background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='.34'/%3E%3C/svg%3E"),
+}
+/* The photo, softened, behind everything. Its own layer so only the photo is
+   blurred: the shade above stays even. #lobby is a stacking context (it has a
+   z-index), so z-index -1 sits above its flat colour and below the card. The
+   position is on the reds, so a tall portrait crop keeps the triangle. */
+#lobby::before,
+#lobby::after {
+  content: '';
+  position: absolute; inset: 0; z-index: -1;
+  pointer-events: none;
+}
+#lobby::before {
+  background-color: #050b08;
+  background-image: url("/lobby-bg.jpg");
+  background-image: image-set(url("/lobby-bg.webp") type("image/webp"), url("/lobby-bg.jpg") type("image/jpeg"));
+  background-size: cover;
+  background-position: 50% 45%;
+  background-repeat: no-repeat;
+  filter: blur(3px);
+}
+/* Shade on top: the vignette closing the corners down, over an even ~60%
+   black, so the card and PLAY stay the brightest things on the screen. */
+#lobby::after {
+  background:
     radial-gradient(118% 80% at 50% 47%, transparent 38%, rgba(0,0,0,.54) 100%),
-    radial-gradient(98% 68% at 50% 47%, #17472f 0%, #103125 32%, #0a1c15 64%, #050d0a 100%);
-  background-size: 120px 120px, cover, cover;
-  background-repeat: repeat, no-repeat, no-repeat;
-  background-blend-mode: soft-light, normal, normal;
+    rgba(0,0,0,.6);
 }
 /* Same trap as #overlay: an id with its own display outranks the UA's
    [hidden] rule, and the lobby would cover the table forever. */
