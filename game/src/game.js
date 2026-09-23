@@ -8,6 +8,7 @@ import { haptic } from './telegram.js';
 import * as api from './api.js';
 import { enqueue, flush, newResultId } from './offline.js';
 import { recordPracticeResult } from './settings.js';
+import { aimHint, hasDesktopPowerInput } from './powerInput.js';
 
 /**
  * Live state the browser drivers read. Not used by the game itself.
@@ -161,7 +162,7 @@ export class Game {
       this.controls.setPlacing(frame.inHand);
       this.pendingCuePlacement = null;
       if (this.mode === 'practice') this.clockEndsAt = Date.now() + SHOT_CLOCK_MS;
-      this.hud.hint(frame.inHand ? 'Tap inside the D to place the cue ball' : 'Tap to aim · drag to fine-tune · slide the bar for power');
+      this.hud.hint(frame.inHand ? 'Tap inside the D to place the cue ball' : aimHint(hasDesktopPowerInput()));
     } else {
       this.phase = 'waiting';
       this.controls.setEnabled(false);

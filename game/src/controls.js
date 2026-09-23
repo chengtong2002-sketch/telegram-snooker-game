@@ -1,5 +1,6 @@
 import { BALL_RADIUS, TABLE, inTheD } from '@snooker/sim';
 import { haptic } from './telegram.js';
+import { DesktopPowerInput, powerInputAllowed, isTypingTarget } from './powerInput.js';
 
 // Finger travel (CSS px) under which a touch counts as a tap rather than a drag.
 const TAP_SLOP_PX = 10;
@@ -59,6 +60,29 @@ export class Controls {
     this.dragPlacing = false;
     this.placed = false;
     this.poweringId = null;
+
+    // Desktop: wheel over the game and W / S drive the same power value. Touch
+    // devices never send either, so phones behave exactly as before.
+    this.desktopPower = new DesktopPowerInput({
+      wheelTarget: canvas.closest('#app') ?? canvas,
+      keyTarget: window,
+      getPower: () => this.power,
+      setPower: (p) => this.#setPower(p),
+      isAllowed: () => powerInputAllowed({
+        controlsEnabled: this.enabled,
+        lobbyOpen: !document.getElementById('lobby')?.hidden,
+        overlayOpen: !hud.el.overlay.hidden,
+        otherScreen: Boolean(document.documentElement.dataset.screen),
+        typing: isTypingTarget(document.activeElement),
+      }),
+    });
+  }
+
+  /** Every power change goes through here: the meter, the wheel and W / S. */
+  #setPower(power) {
+    this.power = power;
+    this.hud.setPower(power);
+    this.hud.setShootEnabled(this.enabled);
   }
 
   setEnabled(enabled) {
@@ -180,9 +204,7 @@ export class Controls {
   #setPowerFromEvent(e) {
     const rect = this.meter.getBoundingClientRect();
     const ratio = 1 - (e.clientY - rect.top) / rect.height;
-    this.power = Math.min(1, Math.max(0.02, ratio));
-    this.hud.setPower(this.power);
-    this.hud.setShootEnabled(this.enabled);
+    this.#setPower(Math.min(1, Math.max(0.02, ratio)));
   }
 
   #onPowerDown = (e) => {

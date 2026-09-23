@@ -1,6 +1,7 @@
 import * as api from './api.js';
 import { settings, setSetting, practiceRecord } from './settings.js';
 import { onConnectionChange, isOnline } from './connection.js';
+import { hasDesktopPowerInput } from './powerInput.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -258,11 +259,19 @@ function settingsSheet(hud) {
   render();
 }
 
+/**
+ * Wheel and W / S only exist with a mouse or trackpad (see powerInput.js), so
+ * only say so there; a phone's sheet reads as it always did.
+ */
+function desktopPowerHint() {
+  return hasDesktopPowerInput() ? '\n      <div class="row"><span>Power</span><b>scroll wheel or W / S</b></div>' : '';
+}
+
 function rulesSheet(hud) {
   hud.modal({
     title: 'How to play',
     body: `
-      <p>Drag on the table to aim, set power on the left meter, then press SHOOT.</p>
+      <p>Drag on the table to aim, set power on the left meter, then press SHOOT.</p>${desktopPowerHint()}
       <div class="row"><span>Match</span><b>Best of 3 frames</b></div>
       <div class="row"><span>Shot clock</span><b>30 seconds</b></div>
       <div class="row"><span>Pot a red</span><b>1 point, then a colour</b></div>
