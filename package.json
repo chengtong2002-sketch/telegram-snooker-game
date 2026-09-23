@@ -7,6 +7,7 @@
   "workspaces": [
     "shared/sim",
     "shared/db",
+    "shared/cosmetics",
     "bot",
     "backend",
     "game",

@@ -18,7 +18,8 @@
     "@snooker/sim": "*",
     "@tonconnect/ui": "^2.0.11",
     "matter-js": "^0.20.0",
-    "serve": "^14.2.4"
+    "serve": "^14.2.4",
+    "@snooker/cosmetics": "*"
   },
   "devDependencies": {
     "vite": "^6.0.3",

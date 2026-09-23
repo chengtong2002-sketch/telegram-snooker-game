@@ -1,0 +1,12 @@
+{
+  "name": "@snooker/cosmetics",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "The cue and cue-ball catalog: names, tiers, prices in coins and the SVG art. Read by the game (drawing) and the backend (prices, ownership).",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./cosmetics.json": "./cosmetics.json"
+  }
+}

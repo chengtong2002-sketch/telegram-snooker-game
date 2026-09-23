@@ -11,7 +11,7 @@ import {
 import { BALL_COLOURS, CLOTH } from '../src/renderer.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const dir = path.join(here, '..', 'src', 'cosmetics');
+const dir = path.join(here, '..', '..', 'shared', 'cosmetics');
 const catalog = JSON.parse(fs.readFileSync(path.join(dir, 'cosmetics.json'), 'utf8'));
 const read = (file) => fs.readFileSync(path.join(dir, file), 'utf8');
 const cues = catalog.cues.map((c) => ({ ...c, svg: read(c.file), model: parseCueSvg(read(c.file)) }));

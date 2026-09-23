@@ -4,7 +4,7 @@
       "id": "club-ash",
       "name": "Club Ash",
       "tier": "Starter",
-      "price": null,
+      "price": 0,
       "file": "cues/club-ash.svg",
       "default": true
     },
@@ -12,7 +12,7 @@
       "id": "ebony-points",
       "name": "Ebony Points",
       "tier": "Classic",
-      "price": null,
+      "price": 250,
       "file": "cues/ebony-points.svg",
       "default": false
     },
@@ -20,7 +20,7 @@
       "id": "crimson-crown",
       "name": "Crimson Crown",
       "tier": "Rare",
-      "price": null,
+      "price": 500,
       "file": "cues/crimson-crown.svg",
       "default": false
     },
@@ -28,7 +28,7 @@
       "id": "emerald-hall",
       "name": "Emerald Hall",
       "tier": "Rare",
-      "price": null,
+      "price": 500,
       "file": "cues/emerald-hall.svg",
       "default": false
     },
@@ -36,7 +36,7 @@
       "id": "obsidian-gold",
       "name": "Obsidian Gold",
       "tier": "Epic",
-      "price": null,
+      "price": 1000,
       "file": "cues/obsidian-gold.svg",
       "default": false
     }
@@ -46,7 +46,7 @@
       "id": "club-white",
       "name": "Club White",
       "tier": "Starter",
-      "price": null,
+      "price": 0,
       "file": "balls/club-white.svg",
       "default": true
     },
@@ -54,7 +54,7 @@
       "id": "spotted-trainer",
       "name": "Spotted Trainer",
       "tier": "Classic",
-      "price": null,
+      "price": 250,
       "file": "balls/spotted-trainer.svg",
       "default": false
     },
@@ -62,7 +62,7 @@
       "id": "gold-band",
       "name": "Gold Band",
       "tier": "Rare",
-      "price": null,
+      "price": 500,
       "file": "balls/gold-band.svg",
       "default": false
     },
@@ -70,7 +70,7 @@
       "id": "pearl",
       "name": "Pearl",
       "tier": "Rare",
-      "price": null,
+      "price": 500,
       "file": "balls/pearl.svg",
       "default": false
     },
@@ -78,7 +78,7 @@
       "id": "crown-mark",
       "name": "Crown Mark",
       "tier": "Epic",
-      "price": null,
+      "price": 1000,
       "file": "balls/crown-mark.svg",
       "default": false
     }

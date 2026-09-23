@@ -39,7 +39,7 @@ Table `cosmetic_items`: `id` (slug), `kind` (`cue` | `cue_ball`), `name`, `creat
 `svg` (cleaned text only; the original upload is never stored), `svg_sha256`, `bytes`, `report` (json),
 `rights_confirmed_at`, `submitted_at`, `reviewed_by`, `reviewed_at`, `reject_reason`, `removed_at`.
 
-- A migration seeds the current 10 designs from `game/src/cosmetics/` as `approved`, owned by the owner.
+- A migration seeds the current 10 designs from `shared/cosmetics/` as `approved`, owned by the owner.
 - `cosmetics.json` stops being the source of truth. `GET /api/store` lists approved items from the DB.
   SVGs are served from `GET /api/cosmetics/:id/:sha.svg`: long immutable cache,
   `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'`, `X-Content-Type-Options: nosniff`.

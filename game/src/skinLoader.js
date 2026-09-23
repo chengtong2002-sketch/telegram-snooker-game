@@ -7,13 +7,13 @@
  * previews any item: ?cue=crimson-crown&ball=gold-band. Production builds
  * ignore the parameters.
  */
-import catalog from './cosmetics/cosmetics.json';
+import catalog from '@snooker/cosmetics/cosmetics.json';
 import { parseCueSvg, prepareBallSvg, pickSkins } from './skins.js';
 
 // Bundled as text: no request at play time, and nothing to fail to load.
-const cueSvgs = import.meta.glob('./cosmetics/cues/*.svg', { query: '?raw', import: 'default', eager: true });
-const ballSvgs = import.meta.glob('./cosmetics/balls/*.svg', { query: '?raw', import: 'default', eager: true });
-const svgFor = (table, item) => table[`./cosmetics/${item.file}`] ?? null;
+const cueSvgs = import.meta.glob('../../shared/cosmetics/cues/*.svg', { query: '?raw', import: 'default', eager: true });
+const ballSvgs = import.meta.glob('../../shared/cosmetics/balls/*.svg', { query: '?raw', import: 'default', eager: true });
+const svgFor = (table, item) => table[`../../shared/cosmetics/${item.file}`] ?? null;
 
 /** Decode a ball SVG into an image the renderer can draw from. */
 function loadImage(svg) {
