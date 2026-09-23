@@ -557,6 +557,12 @@ html, body {
    on screen without scrolling. Keyed to height, not orientation, because a
    browser toolbar shrinks the viewport the same way. */
 @media (max-height: 420px) {
+  /* The screen's own breathing room goes first; Telegram's corner buttons and
+     the safe areas are still cleared in full. Buys 12px, which 844×390 needed. */
+  #lobby {
+    padding-top: calc(var(--corner-t) + 8px);
+    padding-bottom: calc(10px + var(--safe-b));
+  }
   .lobby-inner { gap: 9px; }
   .logo-ball { width: 20px; height: 20px; }
   .logo-word { font-size: 17px; letter-spacing: 2px; }
@@ -571,6 +577,16 @@ html, body {
   .lobby-btn { min-height: 38px; }
   .lobby-grid .lobby-btn { min-height: 40px; }
   .cap-note { display: none; }
+}
+
+/* Desktop and tablet: the phone layout, scaled up whole. zoom (rather than
+   restating every size) keeps type, button heights, padding, radii and icons
+   in the proportions tuned above: 420px → 520px wide. The height condition is
+   what keeps phones out — a landscape phone is wider than 768px but never
+   720px tall — and the zoomed card (~650px) still fits without scrolling.
+   #lobby's grid already centres it both ways. */
+@media (min-width: 769px) and (min-height: 720px) {
+  .lobby-inner { zoom: 1.2381; } /* 520 / 420 */
 }
 
 /* ---------- portrait guard ---------- */
