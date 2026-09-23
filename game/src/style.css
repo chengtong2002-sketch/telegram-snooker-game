@@ -291,11 +291,24 @@ html, body {
    as normal sheets on top of it. */
 #lobby {
   position: absolute; inset: 0; z-index: 30;
-  background: var(--bg);
   display: grid; place-items: center;
-  padding: calc(var(--corner-t) + 10px) calc(16px + var(--safe-r)) calc(12px + var(--safe-b)) calc(16px + var(--safe-l));
+  padding: calc(var(--corner-t) + 14px) calc(16px + var(--safe-r)) calc(16px + var(--safe-b)) calc(16px + var(--safe-l));
   overflow: auto;
   touch-action: pan-y;
+
+  /* Three layers, front to back: a felt grain, a vignette that closes the
+     corners down, and the pool of light the card sits in. The grain is inline
+     SVG turbulence — a few hundred bytes of CSS, no request and no file, and
+     the browser rasterises the 120px tile once and repeats it. The flat colour
+     underneath keeps the screen dark if a webview declines the filter. */
+  background-color: #050b08;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='.34'/%3E%3C/svg%3E"),
+    radial-gradient(118% 80% at 50% 47%, transparent 38%, rgba(0,0,0,.54) 100%),
+    radial-gradient(98% 68% at 50% 47%, #17472f 0%, #103125 32%, #0a1c15 64%, #050d0a 100%);
+  background-size: 120px 120px, cover, cover;
+  background-repeat: repeat, no-repeat, no-repeat;
+  background-blend-mode: soft-light, normal, normal;
 }
 /* Same trap as #overlay: an id with its own display outranks the UA's
    [hidden] rule, and the lobby would cover the table forever. */
@@ -303,12 +316,11 @@ html, body {
 
 .lobby-inner {
   width: min(420px, 100%);
-  display: flex; flex-direction: column; gap: 10px;
+  display: flex; flex-direction: column; gap: 14px;
 }
 
 .lobby-logo {
   display: flex; align-items: center; justify-content: center; gap: 9px;
-  margin-bottom: 2px;
 }
 .logo-ball { width: 26px; height: 26px; flex: 0 0 auto; }
 .logo-word {
@@ -317,11 +329,31 @@ html, body {
   color: var(--text);
 }
 
+/* The menu as one contained surface: a shade lighter than the pool it sits in,
+   lit along the top edge and dropped onto the background by the shadow.
+   Spacing inside is set per child rather than by a flex gap, so a group — the
+   allowance line, its bar and its note — can sit tighter than the space
+   between groups. 16px between groups, 8px within one. */
+.lobby-card {
+  display: flex; flex-direction: column;
+  padding: 16px 14px;
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,0) 120px),
+    linear-gradient(180deg, #1b2a24 0%, #121d18 100%);
+  border: 1px solid rgba(146,190,168,.13);
+  box-shadow:
+    0 22px 48px rgba(0,0,0,.58),
+    0 2px 6px rgba(0,0,0,.40),
+    inset 0 1px 0 rgba(255,255,255,.06);
+}
+
 .lobby-head { display: flex; align-items: center; gap: 12px; }
 .lobby-avatar {
-  width: 52px; height: 52px;
+  width: 50px; height: 50px;
   font-size: 18px;
-  border-color: var(--accent);
+  border-color: rgba(53,196,138,.70);
+  box-shadow: 0 0 0 3px rgba(53,196,138,.10);
   flex: 0 0 auto;
 }
 .lobby-who { display: flex; flex-direction: column; min-width: 0; }
@@ -329,74 +361,120 @@ html, body {
   font-size: 20px; font-weight: 800;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.lobby-sub { font-size: 12px; color: var(--muted); }
+.lobby-sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
 
-.stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--gap); }
+.stat-row {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+  margin-top: 16px;
+}
+/* Recessed against the card, with the same lit top edge — so a tile reads as
+   cut into the surface rather than stuck onto it. */
 .stat {
-  background: var(--panel); border: 1px solid var(--line);
-  border-radius: 12px; padding: 10px 6px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,0) 70%),
+    rgba(9,17,14,.72);
+  border: 1px solid rgba(146,190,168,.10);
+  border-radius: 14px;
+  padding: 13px 6px 11px;
   text-align: center; min-width: 0;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.07);
 }
 .stat b {
   display: block;
-  font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums;
-  line-height: 1.1;
+  font-size: 23px; font-weight: 800; font-variant-numeric: tabular-nums;
+  letter-spacing: -.4px; line-height: 1.05;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .stat span {
-  display: block; margin-top: 2px;
-  font-size: 10px; color: var(--muted);
-  text-transform: uppercase; letter-spacing: .4px;
+  display: block; margin-top: 5px;
+  font-size: clamp(10px, 2.7vw, 11px); color: rgba(139,163,154,.85);
+  text-transform: uppercase; letter-spacing: .2px;
+  /* Never clipped: if it will not fit it wraps, which stays readable. */
+  text-wrap: balance;
 }
 
 .cap-line {
   font-size: 12px; color: var(--muted);
-  margin-top: 2px;
+  margin-top: 16px;
 }
 .cap-line b { color: var(--text); font-size: 14px; font-variant-numeric: tabular-nums; }
 /* Nothing left: the sentence itself carries the warning, so it stops reading
    as a neutral count. */
 .cap-line.spent { color: var(--warn); }
 .cap-bar {
-  height: 5px; border-radius: 999px;
-  background: var(--panel); border: 1px solid var(--line);
+  height: 6px; border-radius: 999px;
+  background: rgba(0,0,0,.45);
+  border: 1px solid rgba(146,190,168,.10);
   overflow: hidden;
+  margin-top: 7px;
 }
 .cap-fill {
   height: 100%; width: 0;
-  background: var(--accent);
+  background: linear-gradient(90deg, #2fae7b, #4ddb9c);
   transition: width .25s ease;
 }
 /* Nearly used up: the same warn/danger ramp the shot clock uses. */
 .cap-fill.warn { background: var(--warn); }
 .cap-fill.spent { background: var(--danger); }
-.cap-note { margin: 0; font-size: 11px; line-height: 1.4; color: var(--muted); }
+.cap-note {
+  margin: 8px 0 0;
+  font-size: 11px; line-height: 1.4; color: var(--muted);
+}
 .cap-note:empty { display: none; }
+/* No stats: the count and bar are hidden and the note stands alone, so it takes
+   the group's spacing rather than the within-group one. */
+.cap-bar[hidden] + .cap-note { margin-top: 16px; }
 
+/* The hero, and the only lit surface on the screen. */
 .lobby-primary {
-  margin-top: 4px;
-  min-height: 56px;
-  border: none; border-radius: 14px;
-  background: var(--accent); color: #06110c;
-  font-weight: 800; font-size: 18px; letter-spacing: 1px;
-  box-shadow: 0 4px 14px rgba(0,0,0,.45);
+  margin-top: 16px;
+  min-height: 64px;
+  border: none; border-radius: 16px;
+  background: linear-gradient(180deg, #4ddb9c 0%, #31b880 52%, #219167 100%);
+  color: #03130c;
+  font-weight: 800; font-size: 19px; letter-spacing: 1.5px;
+  box-shadow:
+    0 10px 30px rgba(45,190,130,.30),
+    0 3px 10px rgba(0,0,0,.45),
+    inset 0 1px 0 rgba(255,255,255,.35),
+    inset 0 -2px 0 rgba(0,0,0,.16);
   cursor: pointer;
 }
-.lobby-primary:active { transform: translateY(1px); }
-.lobby-primary:disabled { background: #2c3a34; color: var(--muted); box-shadow: none; }
+.lobby-primary:active {
+  transform: translateY(1px);
+  box-shadow: 0 5px 16px rgba(45,190,130,.22), inset 0 1px 0 rgba(255,255,255,.25);
+}
+.lobby-primary:disabled {
+  background: linear-gradient(180deg, #2a3a33, #212e28);
+  color: var(--muted); box-shadow: none;
+}
 
 .lobby-btn {
   min-height: 44px;
-  border: 1px solid var(--line); border-radius: 12px;
-  background: var(--panel); color: var(--text);
+  border: 1px solid rgba(146,190,168,.13); border-radius: 13px;
+  background: rgba(255,255,255,.035); color: var(--text);
   font-weight: 700; font-size: 14px;
+  /* Every one of them centres icon and label the same way. */
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
   cursor: pointer;
 }
-.lobby-btn:active { background: var(--line); }
+.lobby-btn:active { background: rgba(255,255,255,.075); }
+
+/* Second to PLAY, so it is drawn rather than filled — the hierarchy has to read
+   at a glance, without stopping to read the labels. */
+#lobby-practice {
+  margin-top: 8px;
+  min-height: 46px;
+  background: transparent;
+  border-color: rgba(53,196,138,.38);
+  color: #9fe3c4;
+}
+#lobby-practice:active { background: rgba(53,196,138,.10); }
 
 .offline-chip {
   flex: 0 0 auto;
   align-self: flex-start;
+  margin-left: auto;
   font-size: 10px; font-weight: 700;
   text-transform: uppercase; letter-spacing: .5px;
   color: var(--warn);
@@ -407,7 +485,7 @@ html, body {
 .offline-chip[hidden] { display: none; }
 
 .offline-note {
-  margin: 0;
+  margin: 10px 0 0;
   font-size: 11px; line-height: 1.4;
   color: var(--warn);
   text-align: center;
@@ -419,29 +497,46 @@ html, body {
   opacity: .45;
   cursor: default;
 }
-.lobby-btn:disabled:active { background: var(--panel); }
+.lobby-btn:disabled:active { background: rgba(255,255,255,.035); }
 
-.lobby-grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: var(--gap); }
-.lobby-grid .lobby-btn { font-size: 13px; }
-#lobby-settings { width: 46px; font-size: 16px; }
+/* Equal thirds: three buttons of the same weight, so none of them reads as the
+   next thing to press. */
+.lobby-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+  margin-top: 8px;
+}
+.lobby-grid .lobby-btn { min-height: 46px; font-size: clamp(11px, 3.3vw, 12.5px); white-space: nowrap; }
+.btn-icon { width: 17px; height: 17px; flex: 0 0 auto; }
 
-/* Buttons carrying an icon centre it with their label. */
-#lobby-rewards { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
-.btn-icon { width: 16px; height: 16px; flex: 0 0 auto; }
+/* A 320px phone: the three stat tiles are the tightest thing on the screen and
+   MATCHES WON is the longest label. Buy the room back from padding and gaps
+   rather than shrinking the type; if it is still short the label wraps to two
+   lines, which the row absorbs because the tiles stretch to match. Kept below
+   360 so an ordinary phone is untouched. */
+@media (max-width: 340px) {
+  .lobby-card { padding: 16px 12px; }
+  .stat-row, .lobby-grid { gap: 6px; }
+  .stat { padding: 13px 3px 11px; }
+  .stat span { letter-spacing: 0; }
+}
 
 /* A landscape phone is ~350px tall: give up the decorative height so PLAY stays
    on screen without scrolling. Keyed to height, not orientation, because a
    browser toolbar shrinks the viewport the same way. */
 @media (max-height: 420px) {
-  .lobby-inner { gap: 7px; }
+  .lobby-inner { gap: 9px; }
   .logo-ball { width: 20px; height: 20px; }
   .logo-word { font-size: 17px; letter-spacing: 2px; }
-  .lobby-avatar { width: 40px; height: 40px; font-size: 15px; }
+  .lobby-card { padding: 12px; border-radius: 18px; }
+  .lobby-avatar { width: 40px; height: 40px; font-size: 15px; box-shadow: none; }
   .lobby-name { font-size: 17px; }
-  .stat { padding: 6px 6px; }
-  .stat b { font-size: 17px; }
-  .lobby-primary { min-height: 46px; font-size: 16px; }
+  .stat { padding: 8px 6px 7px; }
+  .stat b { font-size: 18px; }
+  .stat span { margin-top: 3px; }
+  .stat-row, .cap-line, .lobby-primary { margin-top: 10px; }
+  .lobby-primary { min-height: 48px; font-size: 16px; }
   .lobby-btn { min-height: 38px; }
+  .lobby-grid .lobby-btn { min-height: 40px; }
   .cap-note { display: none; }
 }
 

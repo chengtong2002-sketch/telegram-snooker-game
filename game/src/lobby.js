@@ -86,6 +86,7 @@ function paintStats(el, stats) {
   el.best.textContent = fmt(stats.bestBreak);
 
   const { cap, remaining } = stats.daily ?? {};
+  el.capLine.hidden = false;
   el.capBar.hidden = false;
   el.capLine.className = 'cap-line';
   if (cap === null || cap === undefined) {
@@ -117,6 +118,8 @@ function paintStatsUnavailable(el, note = 'Stats are unavailable — you can sti
   el.capLine.className = 'cap-line';
   // Hidden rather than emptied: the fill animates, so a bar left on screen
   // keeps showing the old allowance for a moment next to a value reading "–".
+  // The line goes too — a lone dash is not a sentence, and the note says why.
+  el.capLine.hidden = true;
   el.capBar.hidden = true;
   el.capFill.style.width = '0%';
   el.capFill.className = 'cap-fill';

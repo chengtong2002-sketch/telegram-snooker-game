@@ -84,56 +84,66 @@
             <span class="logo-word">Snooker</span>
           </div>
 
-          <header class="lobby-head">
-            <div class="avatar lobby-avatar" id="lobby-avatar">?</div>
-            <div class="lobby-who">
-              <span class="lobby-name" id="lobby-name">Player</span>
-              <span class="lobby-sub" id="lobby-sub">Snooker</span>
-            </div>
-            <span class="offline-chip" id="lobby-offline" hidden>⚠ Offline</span>
-          </header>
+          <!-- One contained surface, so the menu lifts off the background
+               instead of floating loose on it. -->
+          <div class="lobby-card">
+            <header class="lobby-head">
+              <div class="avatar lobby-avatar" id="lobby-avatar">?</div>
+              <div class="lobby-who">
+                <span class="lobby-name" id="lobby-name">Player</span>
+                <span class="lobby-sub" id="lobby-sub">Snooker</span>
+              </div>
+              <span class="offline-chip" id="lobby-offline" hidden>⚠ Offline</span>
+            </header>
 
-          <div class="stat-row">
-            <div class="stat">
-              <b id="stat-points">–</b>
-              <span>points</span>
+            <div class="stat-row">
+              <div class="stat">
+                <b id="stat-points">–</b>
+                <span>points</span>
+              </div>
+              <div class="stat">
+                <b id="stat-matches">–</b>
+                <span>matches won</span>
+              </div>
+              <div class="stat">
+                <b id="stat-break">–</b>
+                <span>high break</span>
+              </div>
             </div>
-            <div class="stat">
-              <b id="stat-matches">–</b>
-              <span>matches won</span>
+
+            <!-- Reads as an allowance remaining ("15 matches left today"), not as
+                 a progress bar filling up toward a limit. -->
+            <div class="cap-line" id="cap-line">
+              <span id="cap-value">–</span>
             </div>
-            <div class="stat">
-              <b id="stat-break">–</b>
-              <span>high break</span>
+            <div class="cap-bar" id="cap-bar"><div class="cap-fill" id="cap-fill"></div></div>
+            <p class="cap-note" id="cap-note"></p>
+
+            <button id="lobby-play" class="lobby-primary">PLAY</button>
+            <button id="lobby-practice" class="lobby-btn">Practice</button>
+
+            <div class="lobby-grid">
+              <button id="lobby-rewards" class="lobby-btn">
+                <!-- A token, in currentColor so it dims with the button offline. -->
+                <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2" />
+                  <circle cx="12" cy="12" r="3.5" fill="currentColor" />
+                </svg>
+                Rewards
+              </button>
+              <button id="lobby-rules" class="lobby-btn">How to play</button>
+              <button id="lobby-settings" class="lobby-btn" aria-label="Settings">
+                <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="12" cy="12" r="3.25" fill="none" stroke="currentColor" stroke-width="2" />
+                  <path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"
+                        d="M12 2.6l2 .5.6 2.1 1.6.9 2-.8 1.4 1.5-1 1.9.5 1.8 2 .8v2l-2 .8-.5 1.8 1 1.9-1.4 1.5-2-.8-1.6.9-.6 2.1-2 .5-2-.5-.6-2.1-1.6-.9-2 .8-1.4-1.5 1-1.9-.5-1.8-2-.8v-2l2-.8.5-1.8-1-1.9L5.8 5.3l2 .8 1.6-.9.6-2.1z" />
+                </svg>
+              </button>
             </div>
+            <p class="offline-note" id="offline-note" hidden>
+              No connection — Practice still works. PvP and Rewards need one.
+            </p>
           </div>
-
-          <!-- Reads as an allowance remaining ("15 matches left today"), not as
-               a progress bar filling up toward a limit. -->
-          <div class="cap-line" id="cap-line">
-            <span id="cap-value">–</span>
-          </div>
-          <div class="cap-bar" id="cap-bar"><div class="cap-fill" id="cap-fill"></div></div>
-          <p class="cap-note" id="cap-note"></p>
-
-          <button id="lobby-play" class="lobby-primary">PLAY</button>
-          <button id="lobby-practice" class="lobby-btn">Practice</button>
-
-          <div class="lobby-grid">
-            <button id="lobby-rewards" class="lobby-btn">
-              <!-- A token, in currentColor so it dims with the button offline. -->
-              <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2" />
-                <circle cx="12" cy="12" r="3.5" fill="currentColor" />
-              </svg>
-              Rewards
-            </button>
-            <button id="lobby-rules" class="lobby-btn">How to play</button>
-            <button id="lobby-settings" class="lobby-btn" aria-label="Settings">⚙</button>
-          </div>
-          <p class="offline-note" id="offline-note" hidden>
-            No connection — Practice still works. PvP and Rewards need one.
-          </p>
         </div>
       </section>
 
