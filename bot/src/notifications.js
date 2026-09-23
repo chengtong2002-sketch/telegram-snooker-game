@@ -5,6 +5,7 @@ import { userById } from '@snooker/db';
 import { config } from './config.js';
 import { matchKeyboard, canOpenGame } from './keyboards.js';
 import { SHOT_CLOCK_MS } from '@snooker/sim';
+import { isPermanentSendFailure } from './sendFailures.js';
 
 const FOUL_TEXT = {
   miss: 'missed everything',
@@ -152,8 +153,9 @@ export function startNotificationServer(bot) {
       }
       return res.json({ ok: true });
     } catch (err) {
-      // A blocked bot or deleted chat must not retry forever.
-      const permanent = /blocked|chat not found|deactivated/i.test(err.message ?? '');
+      // A blocked bot, a deleted chat or a send aimed at another bot must not
+      // be retried forever: 200 tells the backend there is nothing to chase.
+      const permanent = isPermanentSendFailure(err);
       return res.status(permanent ? 200 : 500).json({ ok: permanent, error: err.message });
     }
   });
