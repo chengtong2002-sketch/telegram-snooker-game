@@ -244,8 +244,8 @@ function settingsSheet(hud) {
     hud.modal({
       title: 'Settings',
       body: `<div class="row"><span>Sound</span><b>${current.sound ? 'On' : 'Off'}</b></div>
-             <p class="note">Sound effects are not in the build yet — this remembers your
-             choice for when they land.</p>`,
+             <p class="note">Table sounds: the cue, ball contacts, cushions and pockets. The
+             lobby is always quiet. Also in the in-game pause menu.</p>`,
       actions: [
         {
           label: current.sound ? 'Turn sound off' : 'Turn sound on',

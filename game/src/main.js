@@ -12,6 +12,8 @@ import {
 import { startAutoSync, onQueueChange, pendingCount } from './offline.js';
 import { startConnectionWatch } from './connection.js';
 import * as api from './api.js';
+import { installTableSound } from './sound.js';
+import { soundEnabled, setSetting } from './settings.js';
 
 // TON Connect pulls in a large bundle; keep it out of the first paint so the
 // table is playable immediately and the wallet loads only when asked for.
@@ -25,6 +27,8 @@ trackVisibleViewport();
 const hud = new Hud();
 const canvas = document.getElementById('table');
 const renderer = new TableRenderer(canvas);
+// Read live, so the Settings toggle takes effect on the next sound.
+const sound = installTableSound({ isEnabled: soundEnabled });
 
 let game = null;
 
@@ -52,6 +56,11 @@ function pauseMenu() {
     ].join(''),
     actions: [
       { label: 'Resume', kind: 'primary', onClick: () => hud.closeModal() },
+      {
+        // Live: the next sound reads the setting, no reload needed.
+        label: soundEnabled() ? 'Sound: on' : 'Sound: off',
+        onClick: () => { setSetting('sound', !soundEnabled()); pauseMenu(); },
+      },
       {
         label: 'Wallet & rewards',
         onClick: () => openWalletScreen(hud, { onClose: () => pauseMenu() }),
@@ -279,7 +288,7 @@ function waitForMatch() {
 
 async function startGame(mode, matchId, me, controls) {
   game?.destroy();
-  game = new Game({ mode, matchId, me, hud, renderer, controls });
+  game = new Game({ mode, matchId, me, hud, renderer, controls, sound });
   try {
     await game.start();
   } catch (err) {

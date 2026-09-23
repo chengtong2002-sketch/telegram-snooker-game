@@ -1,6 +1,6 @@
 import {
   newMatch, resolveShot, resolveTimeout, advanceMatch, createSimulation,
-  chooseShot, matchHighBreak, frameUnrecoverable, cuePlacementProblem, PHYSICS, SHOT_CLOCK_MS, MAX_BREAK,
+  chooseShot, matchHighBreak, frameUnrecoverable, cuePlacementProblem, PHYSICS, SHOT_CLOCK_MS, MAX_BREAK, MAX_SHOT_SPEED,
   localDeadline,
 } from '@snooker/sim';
 import { describeOutcome } from './hud.js';
@@ -9,6 +9,7 @@ import * as api from './api.js';
 import { enqueue, flush, newResultId } from './offline.js';
 import { recordPracticeResult } from './settings.js';
 import { aimHint, hasDesktopPowerInput } from './powerInput.js';
+import { ImpactTracker } from './sound.js';
 
 /**
  * Live state the browser drivers read. Not used by the game itself.
@@ -34,13 +35,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * server's resolution replaces whatever the client came up with.
  */
 export class Game {
-  constructor({ mode, matchId, me, hud, renderer, controls }) {
+  constructor({ mode, matchId, me, hud, renderer, controls, sound = null }) {
     this.mode = mode;             // 'practice' | 'pvp'
     this.matchId = matchId;
     this.me = me;
     this.hud = hud;
     this.renderer = renderer;
     this.controls = controls;
+    this.sound = sound;
 
     this.myIndex = 0;
     this.state = null;            // sim match state
@@ -238,10 +240,18 @@ export class Game {
   #animate(shot) {
     return new Promise((resolve) => {
       const sim = createSimulation(this.frame.balls, shot);
+      // Sound listens to the animation and never touches the sim: it reads the
+      // events and ball positions after each step (see ImpactTracker).
+      const impacts = this.sound ? new ImpactTracker({ dtMs: PHYSICS.dt, sound: this.sound }) : null;
+      impacts?.start(sim.balls());
+      this.sound?.strike(Math.min(1, Math.max(0, shot.power)) * MAX_SHOT_SPEED);
       let potted = 0;
       const tick = () => {
         if (this.destroyed) return resolve();
-        for (let i = 0; i < STEPS_PER_FRAME && !sim.done; i += 1) sim.step();
+        for (let i = 0; i < STEPS_PER_FRAME && !sim.done; i += 1) {
+          sim.step();
+          impacts?.afterStep(sim.balls(), sim.events);
+        }
         this.animBalls = sim.balls();
         const pots = sim.events.filter((e) => e.type === 'pot').length;
         if (pots > potted) {
