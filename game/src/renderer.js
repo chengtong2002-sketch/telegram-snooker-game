@@ -2,8 +2,9 @@ import {
   TABLE, BALL_RADIUS, POCKETS, BAULK_LINE_X, D_RADIUS, CENTRE_Y, COLOURS,
   cushionGeometry,
 } from '@snooker/sim';
+import { drawCueSkin, ballImageSize } from './skins.js';
 
-const BALL_COLOURS = {
+export const BALL_COLOURS = {
   cue: '#f4f1e6',
   red: '#c8202a',
   yellow: '#e8c53a',
@@ -16,7 +17,7 @@ const BALL_COLOURS = {
 
 const RAIL = 9;        // cm of visible rail drawn outside the playing surface
 const CUSHION_DRAWN = 3.6; // cm of cushion rubber drawn behind the face; wood beyond
-const CLOTH = '#0f6b48';
+export const CLOTH = '#0f6b48';
 const CUSHION = '#0b5a3c';
 const CUSHION_EDGE = 'rgba(255,255,255,.14)';
 const WOOD = '#4a2f1c';
@@ -165,9 +166,19 @@ const MOUTHS = POCKETS.map((pocket) => {
 });
 
 export class TableRenderer {
-  constructor(canvas) {
+  /**
+   * @param {HTMLCanvasElement} canvas  the table
+   * @param {object} [o]
+   * @param {HTMLCanvasElement} [o.cueLayer]  a canvas over the whole game area
+   *   for the aiming cue, so it can run past the rail. Without one the cue is
+   *   drawn on the table canvas and cut off at its edge.
+   */
+  constructor(canvas, { cueLayer = null } = {}) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
+    this.cueLayer = cueLayer;
+    this.cueCtx = cueLayer?.getContext('2d') ?? null;
+    this.cueLayerDirty = false;
     this.scale = 1;
     this.dpr = Math.min(window.devicePixelRatio || 1, 2.5);
     // In table centimetres: a gradient is read through the transform in force
@@ -175,6 +186,22 @@ export class TableRenderer {
     const cx = TABLE.width / 2;
     this.light = this.ctx.createRadialGradient(cx, CENTRE_Y, 0, cx, CENTRE_Y, Math.hypot(cx + RAIL, CENTRE_Y + RAIL));
     for (const [at, colour] of LIGHT_STOPS) this.light.addColorStop(at, colour);
+
+    // Cosmetics (skins.js). Null: the original cue and cue ball, unchanged.
+    this.cueSkin = null;
+    this.ballSkin = null;
+    this.ballSkinCache = null; // { px, canvas }: the texture rasterised at the current size
+  }
+
+  /** A cue skin from parseCueSvg, or null for the original cue. */
+  setCueSkin(model) {
+    this.cueSkin = model;
+  }
+
+  /** A decoded cue-ball image (see prepareBallSvg), or null for the original. */
+  setBallSkin(image) {
+    this.ballSkin = image;
+    this.ballSkinCache = null;
   }
 
   /** Fit the table into the available box, keeping the 2:1 aspect ratio. */
@@ -346,6 +373,23 @@ export class TableRenderer {
     ctx.stroke();
   }
 
+  /**
+   * The cue-ball skin, rasterised once at the size it is drawn on screen.
+   * Drawing the SVG image itself every frame would re-rasterise it every
+   * frame; drawing a canvas is a plain copy.
+   */
+  #ballSkinTexture() {
+    const px = Math.max(8, Math.round(ballImageSize(BALL_RADIUS) * this.scale * this.dpr));
+    if (this.ballSkinCache?.px !== px) {
+      const canvas = document.createElement('canvas');
+      canvas.width = px;
+      canvas.height = px;
+      canvas.getContext('2d').drawImage(this.ballSkin, 0, 0, px, px);
+      this.ballSkinCache = { px, canvas };
+    }
+    return this.ballSkinCache.canvas;
+  }
+
   #drawBall(ball, { highlight = false, dim = false } = {}) {
     const { ctx } = this;
     const fill = BALL_COLOURS[ball.color] ?? '#999';
@@ -357,6 +401,13 @@ export class TableRenderer {
     ctx.arc(ball.x, ball.y + 0.6, BALL_RADIUS, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(0,0,0,.35)';
     ctx.fill();
+
+    if (ball.id === 'cue' && this.ballSkin) {
+      const size = ballImageSize(BALL_RADIUS);
+      ctx.drawImage(this.#ballSkinTexture(), ball.x - size / 2, ball.y - size / 2, size, size);
+      ctx.restore();
+      return;
+    }
 
     const grad = ctx.createRadialGradient(
       ball.x - BALL_RADIUS * 0.35, ball.y - BALL_RADIUS * 0.4, BALL_RADIUS * 0.15,
@@ -407,15 +458,50 @@ export class TableRenderer {
     ctx.arc(gx, gy, BALL_RADIUS, 0, Math.PI * 2);
     ctx.stroke();
 
+    ctx.restore();
+
     // Cue stick behind the ball, pulled back with power.
     const back = 8 + power * 22;
-    ctx.strokeStyle = '#d8b076';
-    ctx.lineWidth = 1.6;
-    ctx.beginPath();
-    ctx.moveTo(cue.x - Math.cos(angle) * back, cue.y - Math.sin(angle) * back);
-    ctx.lineTo(cue.x - Math.cos(angle) * (back + 110), cue.y - Math.sin(angle) * (back + 110));
-    ctx.stroke();
-    ctx.restore();
+    const cueCtx = this.#cueContext() ?? ctx;
+    const tipX = cue.x - Math.cos(angle) * back;
+    const tipY = cue.y - Math.sin(angle) * back;
+    if (this.cueSkin) {
+      drawCueSkin(cueCtx, this.cueSkin, { tipX, tipY, angle, length: 110 });
+      return;
+    }
+    cueCtx.save();
+    cueCtx.strokeStyle = '#d8b076';
+    cueCtx.lineWidth = 1.6;
+    cueCtx.beginPath();
+    cueCtx.moveTo(tipX, tipY);
+    cueCtx.lineTo(cue.x - Math.cos(angle) * (back + 110), cue.y - Math.sin(angle) * (back + 110));
+    cueCtx.stroke();
+    cueCtx.restore();
+  }
+
+  /**
+   * The cue layer, sized to its box and set to the table's own coordinates
+   * (cm, origin at the playing surface's corner) wherever the table sits
+   * inside it. Null without a layer.
+   */
+  #cueContext() {
+    const layer = this.cueLayer;
+    if (!layer) return null;
+    const w = Math.round(layer.clientWidth * this.dpr);
+    const h = Math.round(layer.clientHeight * this.dpr);
+    if (!w || !h) return null;
+    if (layer.width !== w || layer.height !== h) {
+      layer.width = w;
+      layer.height = h;
+    }
+    const table = this.canvas.getBoundingClientRect();
+    const box = layer.getBoundingClientRect();
+    const k = this.dpr * this.scale;
+    this.cueCtx.setTransform(k, 0, 0, k,
+      (table.left - box.left) * this.dpr + RAIL * k,
+      (table.top - box.top) * this.dpr + RAIL * k);
+    this.cueLayerDirty = true;
+    return this.cueCtx;
   }
 
   #drawDZone() {
@@ -440,6 +526,12 @@ export class TableRenderer {
     const { ctx } = this;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    // Last frame's cue goes, whether or not there is one this frame.
+    if (this.cueLayerDirty) {
+      this.cueCtx.setTransform(1, 0, 0, 1, 0, 0);
+      this.cueCtx.clearRect(0, 0, this.cueLayer.width, this.cueLayer.height);
+      this.cueLayerDirty = false;
+    }
     this.#begin();
     this.#drawTable();
     if (view.showD) this.#drawDZone();

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 36" width="100%" style="display: block; width: 100%; height: auto; filter: drop-shadow(0 6px 8px rgba(0,0,0,.55));" aria-hidden="true"><defs>
+<linearGradient id="c4ash" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f3e2b8"/><stop offset=".45" stop-color="#e2c68f"/><stop offset="1" stop-color="#a88450"/></linearGradient>
+<linearGradient id="c4butt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f8a5a"/><stop offset=".5" stop-color="#145c38"/><stop offset="1" stop-color="#062717"/></linearGradient>
+<linearGradient id="c4sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".32"/><stop offset=".3" stop-color="#fff" stop-opacity=".05"/><stop offset=".7" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".35"/></linearGradient>
+<clipPath id="c4clip"><path d="M0,4 L1000,13.5 L1000,22.5 L0,32 Z"/></clipPath>
+</defs><g clip-path="url(#c4clip)">
+<polygon points="0,4.00 1000,13.50 1000,22.50 0,32.00" fill="url(#c4ash)" /><line x1="420" y1="15" x2="560" y2="15.6" stroke="#8a6534" stroke-opacity=".22" stroke-width=".6"/><line x1="520" y1="20" x2="660" y2="19.6" stroke="#8a6534" stroke-opacity=".22" stroke-width=".6"/><line x1="610" y1="16.5" x2="750" y2="16.8" stroke="#8a6534" stroke-opacity=".22" stroke-width=".6"/><line x1="700" y1="21" x2="840" y2="20.4" stroke="#8a6534" stroke-opacity=".22" stroke-width=".6"/><line x1="790" y1="15.5" x2="930" y2="16.0" stroke="#8a6534" stroke-opacity=".22" stroke-width=".6"/><line x1="860" y1="19" x2="1000" y2="18.8" stroke="#8a6534" stroke-opacity=".22" stroke-width=".6"/>
+<polygon points="0,4.00 340,7.23 340,28.77 0,32.00" fill="url(#c4butt)" />
+<polygon points="318,7.02 342,7.25 342,28.75 318,28.98" fill="#b8913f" /><polygon points="90,18 104,11 118,18 104,25" fill="#e9dcb0" opacity=".9"/><polygon points="170,18 184,11 198,18 184,25" fill="#e9dcb0" opacity=".9"/><polygon points="250,18 264,11 278,18 264,25" fill="#e9dcb0" opacity=".9"/>
+<polygon points="0,4.00 8,4.08 8,31.92 0,32.00" fill="#111" />
+<polygon points="975,13.26 992,13.42 992,22.58 975,22.74" fill="#f1ece0" /><polygon points="992,13.42 1000,13.50 1000,22.50 992,22.58" fill="#2d6aa8" />
+<rect x="0" y="0" width="1000" height="36" fill="url(#c4sheen)"/>
+</g></svg>

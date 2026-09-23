@@ -29,6 +29,10 @@
       <main id="table-wrap">
         <canvas id="table"></canvas>
       </main>
+      <!-- The cue while aiming: over the whole game area, side panels
+           included, so it can overhang the rail like a real cue. It never
+           takes a touch (see #cue-layer in style.css). -->
+      <canvas id="cue-layer" aria-hidden="true"></canvas>
 
       <aside id="hud">
         <div class="player" id="player-a">

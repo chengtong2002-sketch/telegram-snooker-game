@@ -13,6 +13,7 @@ import { startAutoSync, onQueueChange, pendingCount } from './offline.js';
 import { startConnectionWatch } from './connection.js';
 import * as api from './api.js';
 import { installTableSound } from './sound.js';
+import { applySkins } from './skinLoader.js';
 import { soundEnabled, setSetting } from './settings.js';
 
 // TON Connect pulls in a large bundle; keep it out of the first paint so the
@@ -26,7 +27,10 @@ trackVisibleViewport();
 
 const hud = new Hud();
 const canvas = document.getElementById('table');
-const renderer = new TableRenderer(canvas);
+const renderer = new TableRenderer(canvas, { cueLayer: document.getElementById('cue-layer') });
+// Cue and cue-ball skins: the catalog defaults for everyone; in dev,
+// ?cue=…&ball=… previews any item.
+applySkins(renderer);
 // Read live, so the Settings toggle takes effect on the next sound.
 const sound = installTableSound({ isEnabled: soundEnabled });
 

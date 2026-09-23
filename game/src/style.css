@@ -91,9 +91,23 @@ html, body {
     0 14px 44px rgba(0,0,0,.45);
 }
 
+/* The aiming cue gets its own layer over the whole game area, so its butt can
+   run past the rail instead of being cut off at the table canvas's edge. On a
+   landscape phone the only room past the rail is the side columns, so it is
+   drawn over them too: a cue is ~3px wide on screen, and the layer never takes
+   a touch, so the power bar and SHOOT still work through it. Toasts (20), the
+   lobby (30) and sheets (40) all stay above it. */
+#cue-layer {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 3;
+}
+
 /* Side columns clear Telegram's floating corner buttons; the table between
    them does not need to, so it keeps the full height. */
 #left, #hud {
+  position: relative; z-index: 2;
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
