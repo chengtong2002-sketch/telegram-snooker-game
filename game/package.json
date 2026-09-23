@@ -8,6 +8,7 @@
     "dev": "vite --host",
     "build": "vite build",
     "preview": "vite preview --host",
+    "test": "node --test \"test/**/*.test.js\"",
     "smoke": "node test/drive-practice.mjs",
     "smoke:concede": "node test/drive-concede.mjs",
     "smoke:offline": "node test/drive-offline.mjs",

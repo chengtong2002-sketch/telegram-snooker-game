@@ -19,6 +19,10 @@
   --safe-b: max(env(safe-area-inset-bottom), var(--tg-safe-area-inset-bottom, 0px));
   --safe-t: max(env(safe-area-inset-top), var(--tg-safe-area-inset-top, 0px));
   --corner-t: calc(var(--safe-t) + var(--tg-content-safe-area-inset-top, 0px));
+
+  /* The hall's wood (see #app): a grain tile, and the colour it is blended on. */
+  --hall-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='480' height='240'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.006 .22' numOctaves='3' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='480' height='240' filter='url(%23g)' opacity='.42'/%3E%3C/svg%3E");
+  --hall-wood: linear-gradient(180deg, #22150c, #191009);
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -56,6 +60,35 @@ html, body {
   padding-right: calc(var(--gap) + var(--safe-r));
   padding-bottom: calc(var(--gap) + var(--safe-b));
   padding-top: calc(var(--gap) + var(--safe-t));
+
+  /* The hall, three layers front to back: the pool of warm light the table
+     sits in, the dark that closes in around it, and wood at the very edges.
+     The dark is solid through the middle and only fades at the rim, so the
+     wood reads as panelling out at the walls rather than a floor under the
+     table. The grain is inline SVG turbulence stretched along x — no file, no
+     request — and none of it moves. The canvas redraws every frame; this is
+     painted once, which is why the backdrop lives here and not there. */
+  --table-cx: calc(50% + (var(--side-l) - var(--side-r) + var(--safe-l) - var(--safe-r)) / 2);
+  --table-cy: calc(50% + (var(--safe-t) - var(--safe-b)) / 2);
+  background-color: #0d0906;
+  background-image:
+    radial-gradient(ellipse 62% 78% at var(--table-cx) var(--table-cy),
+      rgba(255,196,128,.2) 0%, rgba(230,160,90,.1) 42%, rgba(0,0,0,0) 76%),
+    radial-gradient(ellipse farthest-corner at var(--table-cx) var(--table-cy),
+      #15100b 0%, #0b0806 45%, rgba(7,5,4,.9) 66%, rgba(7,5,4,.28) 100%),
+    var(--hall-grain), var(--hall-wood);
+  background-size: auto, auto, 480px 240px, auto;
+  background-repeat: no-repeat, no-repeat, repeat, no-repeat;
+  background-blend-mode: normal, normal, soft-light, normal;
+}
+
+/* Overhead light casts straight down: the table's shadow spreads evenly round
+   it, a little heavier below. Follows the canvas's rounded corners. */
+#table {
+  box-shadow:
+    0 0 0 1px rgba(0,0,0,.55),
+    0 6px 28px rgba(0,0,0,.7),
+    0 14px 44px rgba(0,0,0,.45);
 }
 
 /* Side columns clear Telegram's floating corner buttons; the table between
@@ -547,7 +580,16 @@ html, body {
   #rotate {
     position: fixed; inset: 0; z-index: 60;
     display: grid; place-items: center; text-align: center;
-    background: var(--bg); color: var(--muted);
+    color: var(--muted);
+    /* The same hall as #app, minus the light: there is no table under it. */
+    background-color: #0d0906;
+    background-image:
+      radial-gradient(ellipse farthest-corner at 50% 50%,
+        #15100b 0%, #0b0806 45%, rgba(7,5,4,.9) 66%, rgba(7,5,4,.28) 100%),
+      var(--hall-grain), var(--hall-wood);
+    background-size: auto, 480px 240px, auto;
+    background-repeat: no-repeat, repeat, no-repeat;
+    background-blend-mode: normal, soft-light, normal;
   }
   .rot-icon { font-size: 44px; animation: tilt 1.6s ease-in-out infinite; }
   @keyframes tilt { 50% { transform: rotate(90deg); } }

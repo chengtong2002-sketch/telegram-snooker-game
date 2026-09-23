@@ -20,6 +20,15 @@ const CLOTH = '#0f6b48';
 const CUSHION = '#0b5a3c';
 const CUSHION_EDGE = 'rgba(255,255,255,.14)';
 const WOOD = '#4a2f1c';
+// The hall's overhead light, laid over the finished table before the balls: a
+// little warmth in the middle, the ends and rails falling into shade. Kept
+// faint, because the cloth is what the eye aims against.
+const LIGHT_STOPS = [
+  [0, 'rgba(255,214,150,.09)'],
+  [0.45, 'rgba(255,214,150,.03)'],
+  [0.8, 'rgba(0,0,0,.12)'],
+  [1, 'rgba(0,0,0,.26)'],
+];
 
 // Same shapes the physics collides with (shared/sim/src/table.js), so the jaws
 // a player sees are the jaws the ball hits. Built once: they never change.
@@ -161,6 +170,11 @@ export class TableRenderer {
     this.ctx = canvas.getContext('2d');
     this.scale = 1;
     this.dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    // In table centimetres: a gradient is read through the transform in force
+    // when it is filled, so one built here serves every size and frame.
+    const cx = TABLE.width / 2;
+    this.light = this.ctx.createRadialGradient(cx, CENTRE_Y, 0, cx, CENTRE_Y, Math.hypot(cx + RAIL, CENTRE_Y + RAIL));
+    for (const [at, colour] of LIGHT_STOPS) this.light.addColorStop(at, colour);
   }
 
   /** Fit the table into the available box, keeping the 2:1 aspect ratio. */
@@ -285,6 +299,11 @@ export class TableRenderer {
     }
     // A light line along the playing edge: face, knuckle arcs and facings.
     for (const rail of CUSHIONS) this.#cushionEdge(rail);
+
+    ctx.fillStyle = this.light;
+    ctx.beginPath();
+    ctx.roundRect(-RAIL, -RAIL, TABLE.width + RAIL * 2, TABLE.height + RAIL * 2, 4);
+    ctx.fill();
   }
 
   #polygon(points) {
