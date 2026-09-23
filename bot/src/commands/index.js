@@ -1,7 +1,7 @@
 import { upsertUser, activeWallet, leaderboard } from '@snooker/db';
-import { SHOT_CLOCK_MS } from '@snooker/sim';
 import * as api from '../api.js';
 import { config } from '../config.js';
+import { welcomeMessage } from '../messages.js';
 import {
   menuKeyboard, matchKeyboard, practiceKeyboard, walletKeyboard, canOpenGame,
 } from '../keyboards.js';
@@ -14,24 +14,8 @@ const nameOf = (row) => (row.username ? `@${row.username}` : (row.first_name ?? 
 
 async function handleStart(ctx) {
   await upsertUser(ctx.from);
-  return ctx.reply(
-    [
-      `🎱 *Snooker* — welcome, ${ctx.from.first_name ?? 'player'}.`,
-      '',
-      `Best of 3 frames, full 22-ball table, ${SHOT_CLOCK_MS / 1000}-second shot clock.`,
-      '',
-      '• */practice* — play the AI. Free, unranked, *not* reward-eligible.',
-      '• */play* — get matched with a real opponent. Turn-based: you take your shot,',
-      '  I ping them, they take theirs.',
-      '• */wallet* — link a TON wallet so rewards have somewhere to land.',
-      '• */leaderboard* — highest breaks this period.',
-      '',
-      `Rewards run on *${config.tonNetwork}* and come out of a capped pool — the more`,
-      'points everyone earns in a period, the less each point pays. Skill only:',
-      'nothing to stake, nothing to lose.',
-    ].join('\n'),
-    { parse_mode: 'Markdown', reply_markup: menuKeyboard() },
-  );
+  const { text, parse_mode } = welcomeMessage(ctx.from, { network: config.tonNetwork });
+  return ctx.reply(text, { parse_mode, reply_markup: menuKeyboard() });
 }
 
 async function handlePractice(ctx) {
