@@ -247,6 +247,11 @@ test('a queued match-winning shot played yesterday but arriving today lands in t
 // timing rarely lets them overlap. These hold one side's transaction open so the
 // other side has to wait for it. SQLite runs one transaction at a time on a
 // single connection, so there is nothing to interleave there.
+//
+// Their dates are fixed and far from the real clock. They used to sit on
+// 2026-09-22..25, and the queued-shot test above plays "yesterday" by the real
+// date: run on Sep 23 it closed the 09-22 period first, the break then moved
+// to 09-23, and closing found nothing ended.
 
 const onPostgres = { skip: isPostgres() ? false : 'needs Postgres (TEST_POSTGRES_URL)' };
 const settledWithin = (promise, ms) => Promise.race([
@@ -256,16 +261,16 @@ const settledWithin = (promise, ms) => Promise.race([
 
 test('closing waits for a break that is mid-write, and counts it', onPostgres, async () => {
   const seed = await finishedMatch(10);
-  const { periodId } = await recordEligibleBreak(seed.row, seed.state, { now: at('2026-09-22T10:00:00Z') });
+  const { periodId } = await recordEligibleBreak(seed.row, seed.state, { now: at('2030-01-22T10:00:00Z') });
   const writer = await finishedMatch(90);
 
   const trx = await getDb().transaction();
   await trx('reward_periods').where({ id: periodId }).forUpdate().first();
   await trx('eligible_breaks').insert({
-    match_id: writer.row.id, user_id: writer.userId, period_id: periodId, break_value: 90, award_day: '2026-09-22',
+    match_id: writer.row.id, user_id: writer.userId, period_id: periodId, break_value: 90, award_day: '2030-01-22',
   });
 
-  const closing = finalizePeriod(periodId, { now: at('2026-09-23T00:00:01Z') });
+  const closing = finalizePeriod(periodId, { now: at('2030-01-23T00:00:01Z') });
   assert.equal(await settledWithin(closing, 400), false, 'closing must wait for the open write');
   await trx.commit();
 
@@ -276,7 +281,7 @@ test('closing waits for a break that is mid-write, and counts it', onPostgres, a
 
 test('a break waits for a close that is mid-write, then goes to the next period', onPostgres, async () => {
   const seed = await finishedMatch(20);
-  const { periodId } = await recordEligibleBreak(seed.row, seed.state, { now: at('2026-09-24T10:00:00Z') });
+  const { periodId } = await recordEligibleBreak(seed.row, seed.state, { now: at('2030-01-24T10:00:00Z') });
   const late = await finishedMatch(80);
 
   // Another replica is closing the period and has not committed yet.
@@ -284,12 +289,12 @@ test('a break waits for a close that is mid-write, then goes to the next period'
   await trx('reward_periods').where({ id: periodId }).forUpdate().first();
   await trx('reward_periods').where({ id: periodId }).update({ finalized: true, total_eligible_points: 20, rate: '50.000000000' });
 
-  const writing = recordEligibleBreak(late.row, late.state, { now: at('2026-09-24T23:59:59.500Z') });
+  const writing = recordEligibleBreak(late.row, late.state, { now: at('2030-01-24T23:59:59.500Z') });
   assert.equal(await settledWithin(writing, 400), false, 'the break must wait for the close');
   await trx.commit();
 
   const result = await writing;
-  const next = await periodStarting('2026-09-25T00:00:00Z');
+  const next = await periodStarting('2030-01-25T00:00:00Z');
   assert.equal(Number(result.periodId), Number(next.id));
   assert.equal(await breaksIn(periodId), 20, 'the closed period gained nothing');
 });
