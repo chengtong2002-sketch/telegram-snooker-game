@@ -1,14 +1,15 @@
 import { upsertUser, activeWallet, leaderboard } from '@snooker/db';
 import * as api from '../api.js';
 import { config } from '../config.js';
-import { welcomeMessage } from '../messages.js';
+import {
+  welcomeMessage, helpMessage, leaderboardMessage, walletLinkedMessage, walletUnlinkedMessage,
+  statusMessage, statusMatchMessage,
+} from '../messages.js';
 import {
   menuKeyboard, matchKeyboard, practiceKeyboard, walletKeyboard, canOpenGame,
 } from '../keyboards.js';
 
 const NO_GAME_URL = 'The game front-end is not deployed yet (GAME_URL is unset), so I cannot open it.';
-
-const nameOf = (row) => (row.username ? `@${row.username}` : (row.first_name ?? 'Player'));
 
 // --- handlers, shared by slash commands and the inline menu ----------------
 
@@ -57,73 +58,32 @@ async function handleLeaderboard(ctx) {
   if (rows.length === 0) {
     return ctx.reply('No reward-eligible breaks yet this period. /play to put one up.');
   }
-  const medal = ['🥇', '🥈', '🥉'];
-  const lines = rows.map((r, i) => `${medal[i] ?? `${i + 1}.`} ${nameOf(r)} — break *${r.best_break}*`);
-  return ctx.reply(
-    ['🏆 *Highest breaks* — PvP only', '', ...lines].join('\n'),
-    { parse_mode: 'Markdown' },
-  );
+  const { text, parse_mode } = leaderboardMessage(rows);
+  return ctx.reply(text, { parse_mode });
 }
 
 async function handleWallet(ctx) {
   const user = await upsertUser(ctx.from);
   const wallet = await activeWallet(user.id);
   if (wallet) {
-    const short = `${wallet.address.slice(0, 6)}…${wallet.address.slice(-6)}`;
-    return ctx.reply(
-      `👛 Linked wallet (${wallet.network}): \`${short}\`\n\nOpen the wallet screen to change it.`,
-      { parse_mode: 'Markdown', reply_markup: canOpenGame() ? walletKeyboard() : undefined },
-    );
+    const { text, parse_mode } = walletLinkedMessage(wallet);
+    return ctx.reply(text, { parse_mode, reply_markup: canOpenGame() ? walletKeyboard() : undefined });
   }
   if (!canOpenGame()) return ctx.reply(NO_GAME_URL);
-  return ctx.reply(
-    [
-      'No wallet linked yet.',
-      '',
-      `Linking uses TON Connect on *${config.tonNetwork}*: you sign a proof of ownership.`,
-      'Nothing is transferred, and the bot never sees a seed phrase.',
-    ].join('\n'),
-    { parse_mode: 'Markdown', reply_markup: walletKeyboard() },
-  );
+  const { text, parse_mode } = walletUnlinkedMessage({ network: config.tonNetwork });
+  return ctx.reply(text, { parse_mode, reply_markup: walletKeyboard() });
 }
 
 async function handleStatus(ctx) {
   try {
     const s = await api.status(ctx.from);
-    const lines = [
-      `Best break: *${s.user.bestBreak}*`,
-      `Frames: *${s.user.framesWon}* won of *${s.user.framesPlayed}*`,
-      s.wallet
-        ? `Wallet: \`${s.wallet.address.slice(0, 8)}…\` (${s.wallet.network})`
-        : 'Wallet: not linked',
-    ];
-    if (s.rewards) {
-      lines.push(
-        '',
-        `This period: *${s.rewards.points}* eligible points`,
-        `Pool: *${s.rewards.budget}* tokens across *${s.rewards.totalPoints}* points`,
-        `Provisional payout: *${s.rewards.tokens.toFixed(4)}* tokens${s.rewards.capped ? ' (share capped)' : ''}`,
-      );
-    }
-    const open = (s.claims?.periods ?? []).filter((p) => p.claimable);
-    if (open.length) {
-      const day = (iso) => new Date(iso).toISOString().slice(0, 10);
-      lines.push('', `*Unclaimed rewards: ${Number(s.claims.totalTokens).toFixed(4)} tokens*`);
-      for (const p of open.slice(0, 5)) {
-        lines.push(`• ${day(p.startsAt)} period: ${p.tokens.toFixed(4)} tokens, claim by ${day(p.expiresAt)}`);
-      }
-      if (open.length > 5) lines.push(`• …and ${open.length - 5} more`);
-      lines.push('Claim them from /wallet. Unclaimed rewards expire.');
-    }
-    await ctx.reply(lines.join('\n'), { parse_mode: 'Markdown' });
+    const summary = statusMessage(s);
+    await ctx.reply(summary.text, { parse_mode: summary.parse_mode });
 
     for (const m of s.matches.slice(0, 3)) {
       const yours = Number(m.turnUserId) === Number(s.user.id);
-      await ctx.reply(
-        `Match \`${m.id.slice(0, 8)}\` — frames ${m.framesWon[0]}–${m.framesWon[1]}, `
-        + (yours ? '*your shot*' : 'waiting on your opponent'),
-        { parse_mode: 'Markdown', reply_markup: yours && canOpenGame() ? matchKeyboard(m.id) : undefined },
-      );
+      const { text, parse_mode } = statusMatchMessage(m, { yours });
+      await ctx.reply(text, { parse_mode, reply_markup: yours && canOpenGame() ? matchKeyboard(m.id) : undefined });
     }
     return undefined;
   } catch (err) {
@@ -140,23 +100,11 @@ async function handleCancel(ctx) {
   }
 }
 
-const HELP = [
-  '*Commands*',
-  '/practice — solo vs AI (not reward-eligible)',
-  '/play — join the matchmaking queue',
-  '/cancel — leave the queue',
-  '/wallet — link or view your TON wallet',
-  '/leaderboard — top breaks this period',
-  '/status — your matches and reward standing',
-  '',
-  '*Fouls* — 4 points minimum, turn passes:',
-  'missing everything · hitting the wrong ball first · potting the cue ball ·',
-  'knocking a ball off the table.',
-].join('\n');
+const HELP = helpMessage();
 
 export function registerCommands(bot) {
   bot.command('start', handleStart);
-  bot.command('help', (ctx) => ctx.reply(HELP, { parse_mode: 'Markdown' }));
+  bot.command('help', (ctx) => ctx.reply(HELP.text, { parse_mode: HELP.parse_mode }));
   bot.command('practice', handlePractice);
   bot.command('play', handlePlay);
   bot.command('cancel', handleCancel);
