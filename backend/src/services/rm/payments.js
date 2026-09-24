@@ -7,15 +7,18 @@
  *   2. RM sends the player back to the Mini App
  *      (t.me/snookerPlayBot/play?startapp=store_<orderId>). Whatever status that
  *      trip carries is for display only: nothing here reads it.
- *   3. **Coins are credited only by RM's webhook**, and only when its signature
- *      verifies against RM's server key, it says SUCCESS, and its amount and
- *      currency are the order's. Ledger ref `rm:<transactionId>` is UNIQUE, so
- *      RM retrying, replaying or racing itself credits once.
+ *   3. **Coins are credited by exactly two things, both RM speaking for itself:**
+ *      - RM's webhook, when its signature verifies against RM's server key;
+ *      - the reconciler's own signed query to RM's API (server to server).
+ *      Either way only when RM says SUCCESS and the amount and currency are the
+ *      order's; otherwise the order is disputed and no coins move. Both credit
+ *      through creditOrderInTrx with ledger ref `rm:<transactionId>`, which is
+ *      UNIQUE: a webhook after the reconciler (or the other way round, or RM
+ *      replaying itself) credits once.
  *   4. RM sends no webhook for failure, cancellation, expiry or refunds, so the
- *      reconciler asks RM about open and recently paid orders. It closes failed
- *      and expired orders and takes refunded coins back. It never credits: a
- *      payment RM reports as SUCCESS with no webhook behind it is logged for a
- *      person to look at (RM retries webhooks; the owner can too).
+ *      reconciler asks RM about open and recently paid orders: it credits a
+ *      payment whose webhook never came, closes failed and expired orders, and
+ *      takes refunded coins back.
  */
 import { randomBytes } from 'node:crypto';
 import { getDb, isPostgres } from '@snooker/db';
@@ -30,8 +33,6 @@ import { createRmClient, verifyCallback, RmApiError } from './client.js';
 export const RM_ORDER_TTL_MS = 60 * 60 * 1000;
 /** Grace after that: a payment RM took at the last second may still be on its way. */
 const EXPIRE_GRACE_MS = 10 * 60 * 1000;
-/** A SUCCESS with no webhook this long after the order: a person should look. */
-const MISSING_WEBHOOK_ALERT_MS = 15 * 60 * 1000;
 
 /** Our order ids: `rm` + 22 hex = 24 characters, RM's order.id limit. */
 export const RM_ORDER_ID = /^rm[0-9a-f]{22}$/;
@@ -130,7 +131,46 @@ const lockOrder = (trx, id) => {
   return (isPostgres() ? q.forUpdate() : q).first();
 };
 
-/* ---------- the webhook: the one way coins are credited ---------- */
+/**
+ * The one place an RM payment turns into coins, for the webhook and the
+ * reconciler alike. Ref `rm:<transactionId>` is UNIQUE, so whichever comes
+ * second gets 'duplicate'. The first payment is the order's; a late one for an
+ * expired order still counts (the money was taken); a second payment is
+ * credited but leaves the order as it is.
+ */
+async function creditOrderInTrx(trx, order, transactionId, actor) {
+  const { status } = await recordEntry({
+    userId: order.user_id,
+    delta: order.coins,
+    reason: 'purchase',
+    ref: `rm:${transactionId}`,
+    actor,
+    note: `${order.pack_id} (${order.amount} sen)`,
+  }, trx);
+  await trx('payment_orders').where({ id: order.id }).whereNull('provider_txn_id').update({
+    status: 'paid', provider_txn_id: transactionId, paid_at: trx.fn.now(), failure_reason: null,
+  });
+  return status === 'recorded' ? 'credited' : 'duplicate';
+}
+
+/** After a credit has committed: log it and tell the player. */
+async function announceCredit(order, source) {
+  const balance = await balanceOf(order.user_id);
+  logger.info({
+    orderId: order.id, userId: order.user_id, coins: order.coins, source,
+  }, 'rm payment credited');
+  notifyBot({
+    type: 'coins-added', userId: order.user_id, coins: order.coins, balance,
+  });
+}
+
+/** RM paid us something other than this order's price: no coins, the order is disputed. */
+async function disputeInTrx(trx, order, why) {
+  if (order.status === 'disputed' || order.status === 'paid') return;
+  await trx('payment_orders').where({ id: order.id }).update({ status: 'disputed', failure_reason: why.slice(0, 200) });
+}
+
+/* ---------- the webhook ---------- */
 
 /**
  * POST /webhooks/rm. Returns { http, body }.
@@ -189,28 +229,9 @@ export async function handleRmWebhook({ rawBody, headers }) {
     } else if (notice.amount !== Number(order.amount) || notice.currency !== order.currency) {
       // Signed by RM, but not what we asked for: no coins, a person decides.
       outcome = 'disputed';
-      if (order.status !== 'disputed' && order.status !== 'paid') {
-        await trx('payment_orders').where({ id: order.id }).update({
-          status: 'disputed',
-          failure_reason: `webhook said ${notice.amount} ${notice.currency}, order is ${order.amount} ${order.currency}`.slice(0, 200),
-        });
-      }
+      await disputeInTrx(trx, order, `webhook said ${notice.amount} ${notice.currency}, order is ${order.amount} ${order.currency}`);
     } else {
-      const { status } = await recordEntry({
-        userId: order.user_id,
-        delta: order.coins,
-        reason: 'purchase',
-        ref: `rm:${notice.transactionId}`,
-        actor: 'webhook',
-        note: `${order.pack_id} (${order.amount} sen)`,
-      }, trx);
-      // The first payment is the order's. A late one for an expired order still
-      // counts (the money was taken); a second payment is credited but leaves the
-      // order as it is.
-      await trx('payment_orders').where({ id: order.id }).whereNull('provider_txn_id').update({
-        status: 'paid', provider_txn_id: notice.transactionId, paid_at: trx.fn.now(), failure_reason: null,
-      });
-      outcome = status === 'recorded' ? 'credited' : 'duplicate';
+      outcome = await creditOrderInTrx(trx, order, notice.transactionId, 'webhook');
     }
     await logEvent({
       orderId: order.id, source: 'webhook', event: 'notify', signatureOk: true, outcome, payload: notice,
@@ -220,11 +241,7 @@ export async function handleRmWebhook({ rawBody, headers }) {
 
   const { outcome, order } = result;
   if (outcome === 'credited') {
-    const balance = await balanceOf(order.user_id);
-    logger.info({ orderId: order.id, userId: order.user_id, coins: order.coins }, 'rm payment credited');
-    notifyBot({
-      type: 'coins-added', userId: order.user_id, coins: order.coins, balance,
-    });
+    await announceCredit(order, 'webhook');
   } else if (outcome === 'disputed' || outcome === 'no_transaction_id') {
     logger.error({ orderId: order.id, outcome, notice }, 'rm payment needs a person: see payment_events');
   }
@@ -249,7 +266,7 @@ export async function orderForUser(userId, orderId) {
   };
 }
 
-/* ---------- reconciler: closes and takes back, never credits ---------- */
+/* ---------- reconciler: RM's API answers, server to server ---------- */
 
 /** Coins taken back for `refundedSen` of an order: all of them for a full refund, rounded up otherwise. */
 export const coinsForRefund = (order, refundedSen) => (refundedSen >= Number(order.amount)
@@ -301,22 +318,35 @@ async function debitRefundInTrx(trx, order, transactionId, total, actor) {
 
 const OPEN = new Set(['created', 'pending', 'expired']);
 
-/** Bring one order in line with RM's answer (`txn`, null when RM has no payment). Never credits. */
+/**
+ * Bring one order in line with RM's answer to our signed query (`txn`, null
+ * when RM has no payment for it).
+ */
 async function applyRmAnswer(orderId, txn, source) {
   const db = getDb();
   const result = await db.transaction(async (trx) => {
     const order = await lockOrder(trx, orderId);
     const now = new Date();
     const status = String(txn?.status ?? '').toUpperCase();
-    const transactionId = txn?.transactionId ? String(txn.transactionId) : null;
+    const transactionId = txn?.transactionId ? String(txn.transactionId).slice(0, 100) : null;
+    const amount = Number(txn?.order?.amount);
+    const currency = txn?.currencyType ?? txn?.order?.currencyType ?? null;
     const credited = transactionId ? await trx('coin_ledger').where({ ref: `rm:${transactionId}` }).first() : null;
     let outcome;
 
     if (!txn) {
       outcome = 'no_payment';
     } else if (status === 'SUCCESS') {
-      // Paid. Only the webhook credits; if it has not, say so and wait for it.
-      outcome = credited ? 'credited_already' : 'paid_awaiting_webhook';
+      if (!transactionId || txn.order?.id !== order.id) {
+        outcome = 'disputed';
+        await disputeInTrx(trx, order, `RM answered for order ${txn.order?.id} / transaction ${transactionId}`);
+      } else if (amount !== Number(order.amount) || currency !== order.currency) {
+        outcome = 'disputed';
+        await disputeInTrx(trx, order, `RM says ${amount} ${currency}, order is ${order.amount} ${order.currency}`);
+      } else {
+        // Paid, and RM itself says so for our price: credit, unless the webhook already has.
+        outcome = await creditOrderInTrx(trx, order, transactionId, source);
+      }
     } else if (['FULL_REFUNDED', 'PARTIAL_REFUNDED', 'REVERSED'].includes(status)) {
       const total = refundedSen(order, txn, status);
       if (total === null) {
@@ -340,7 +370,7 @@ async function applyRmAnswer(orderId, txn, source) {
     }
 
     // Nothing paid and past its time: the order is over. (A payment that lands
-    // later still credits when its webhook comes: the money was taken.)
+    // later still credits, by webhook or reconciler: the money was taken.)
     if ((outcome === 'no_payment' || outcome === 'waiting')
         && ['created', 'pending'].includes(order.status)
         && new Date(order.expires_at).getTime() + EXPIRE_GRACE_MS < now.getTime()) {
@@ -355,21 +385,23 @@ async function applyRmAnswer(orderId, txn, source) {
       event: 'check',
       outcome,
       payload: txn ? {
-        status, transactionId, amount: txn.order?.amount, balanceAmount: txn.balanceAmount,
+        status, transactionId, amount, currency, balanceAmount: txn.balanceAmount,
       } : null,
     }, trx);
     return { outcome, order };
   });
 
   const { outcome, order } = result;
-  const age = Date.now() - new Date(order.created_at).getTime();
-  if ((outcome === 'paid_awaiting_webhook' && age > MISSING_WEBHOOK_ALERT_MS) || outcome === 'refund_unknown') {
+  if (outcome === 'credited') {
+    logger.warn({ orderId: order.id }, 'rm payment credited by the reconciler (no webhook had arrived)');
+    await announceCredit(order, source);
+  } else if (outcome === 'disputed' || outcome === 'refund_unknown') {
     logger.error({ orderId: order.id, outcome, txn }, 'rm payment needs a person: see payment_events');
   }
   return outcome;
 }
 
-/** Ask RM about one of our orders and act on the answer (never crediting). */
+/** Ask RM about one of our orders (a signed server-to-server query) and act on the answer. */
 export async function checkRmOrder(orderId, source) {
   const db = getDb();
   const order = await db('payment_orders').where({ id: orderId, provider: 'rm' }).first();
@@ -390,7 +422,8 @@ export async function checkRmOrder(orderId, source) {
 
 /**
  * What RM never tells us on its own. Every minute from index.js:
- *   open orders older than 2 min         → asked (failed / cancelled / expired)
+ *   open orders older than 2 min         → asked (paid with no webhook / failed / cancelled / expired)
+ *   expired orders from the last day     → asked every 30 min (a payment that landed late)
  *   paid orders from the last 30 days    → asked once a day (refunds made in RM's portal)
  */
 export async function reconcileRm({ now = Date.now() } = {}) {
@@ -405,6 +438,8 @@ export async function reconcileRm({ now = Date.now() } = {}) {
   };
   await collect(db('payment_orders').where({ provider: 'rm' }).whereIn('status', ['created', 'pending'])
     .where('created_at', '<', ago(2 * 60_000)).where(notAskedSince(60_000)));
+  await collect(db('payment_orders').where({ provider: 'rm', status: 'expired' })
+    .where('created_at', '>', ago(24 * 3600_000)).where(notAskedSince(30 * 60_000)));
   await collect(db('payment_orders').where({ provider: 'rm' }).whereIn('status', ['paid', 'partially_refunded'])
     .where('paid_at', '>', ago(30 * 24 * 3600_000)).where(notAskedSince(24 * 3600_000)));
 

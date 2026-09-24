@@ -448,28 +448,96 @@ test('verified webhooks that are not a success, or name no order of ours, credit
   assert.equal(Boolean(logged.signature_ok), true);
 });
 
-/* ---------- nothing else credits ---------- */
+/* ---------- the reconciler's own query to RM ---------- */
 
-test('RM saying SUCCESS to a query credits nothing: only the webhook does', async () => {
+/** An open order, old enough for the reconciler to ask RM about. */
+async function ageForReconcile(orderId) {
+  await getDb()('payment_orders').where({ id: orderId }).update({ created_at: new Date(Date.now() - 10 * 60_000) });
+}
+
+test('the reconciler credits a paid order RM confirms, then the late webhook is a no-op (one credit)', async () => {
   const p = await player();
   const { body: o } = await order(p);
   rm.txns.set(o.orderId, txnFor(o.orderId, 490));
-  await getDb()('payment_orders').where({ id: o.orderId })
-    .update({ created_at: new Date(Date.now() - 3 * 3600_000), expires_at: new Date(Date.now() - 2 * 3600_000) });
+  await ageForReconcile(o.orderId);
+  rm.badSignatures = 0;
+  const queriesBefore = rm.calls.filter((c) => c.url.endsWith(`/payment/transaction/order/${o.orderId}`)).length;
 
-  const polled = await call(`/api/payments/orders/${o.orderId}`, { token: p.token });
+  await rmPay.reconcileRm();
+  assert.equal(rm.calls.filter((c) => c.url.endsWith(`/payment/transaction/order/${o.orderId}`)).length, queriesBefore + 1, 'asked RM itself');
+  assert.equal(rm.badSignatures, 0, 'with a signed request');
+  assert.equal(await balanceOf(p.userId), 100);
+  const row = await orderRow(o.orderId);
+  assert.equal(row.status, 'paid');
+  assert.equal(row.provider_txn_id, `txn-${o.orderId}`);
+
+  // RM's webhook for the same payment arrives afterwards, twice.
+  for (let i = 0; i < 2; i += 1) assert.equal((await postWebhook(signedWebhook(notifyBody(o.orderId, 490)))).status, 200);
+  const rows = await ledger(p.userId);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].ref, `rm:txn-${o.orderId}`, 'one idempotency key for both paths');
+  assert.equal(rows[0].actor, 'reconcile');
+  assert.equal(await balanceOf(p.userId), 100);
+});
+
+test('the webhook credits, then the reconciler runs: nothing more', async () => {
+  const p = await player();
+  const o = await paidOrder(p); // credited by the webhook
+  await getDb()('payment_orders').where({ id: o.orderId }).update({ last_checked_at: new Date(Date.now() - 2 * 24 * 3600_000) });
   await rmPay.reconcileRm();
   await rmPay.checkRmOrder(o.orderId, 'reconcile');
-  assert.equal(polled.body.status, 'pending');
-  assert.equal(await balanceOf(p.userId), 0);
-  const row = await orderRow(o.orderId);
-  assert.equal(row.status, 'pending', 'paid at RM, so not expired either: it waits for the webhook');
-  const seen = await getDb()('payment_events').where({ order_id: o.orderId, outcome: 'paid_awaiting_webhook' }).first();
-  assert.ok(seen, 'the gap is on record for a person');
-
-  await postWebhook(signedWebhook(notifyBody(o.orderId, 490)));
+  const rows = await ledger(p.userId);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].actor, 'webhook');
   assert.equal(await balanceOf(p.userId), 100);
   assert.equal((await orderRow(o.orderId)).status, 'paid');
+  const dup = await getDb()('payment_events').where({ order_id: o.orderId, source: 'reconcile', outcome: 'duplicate' }).first();
+  assert.ok(dup, 'the reconciler saw it was already credited');
+});
+
+test('RM saying FAILED credits nothing and closes the order', async () => {
+  const p = await player();
+  const { body: o } = await order(p);
+  rm.txns.set(o.orderId, txnFor(o.orderId, 490, { status: 'FAILED' }));
+  await ageForReconcile(o.orderId);
+  await rmPay.reconcileRm();
+  assert.equal(await balanceOf(p.userId), 0);
+  assert.equal((await ledger(p.userId)).length, 0);
+  assert.equal((await orderRow(o.orderId)).status, 'failed');
+});
+
+test('RM confirming a different amount, currency or order to the reconciler credits nothing', async () => {
+  const cases = [
+    { order: { amount: 49 } },
+    { currencyType: 'SGD' },
+    { order: { id: `rm${'f'.repeat(22)}` } },
+  ];
+  for (const c of cases) {
+    const p = await player();
+    const { body: o } = await order(p);
+    const txn = txnFor(o.orderId, 490, { ...c, order: undefined });
+    txn.order = { ...txnFor(o.orderId, 490).order, ...c.order };
+    rm.txns.set(o.orderId, txn);
+    await ageForReconcile(o.orderId);
+    await rmPay.reconcileRm();
+    assert.equal(await balanceOf(p.userId), 0, JSON.stringify(c));
+    assert.equal((await orderRow(o.orderId)).status, 'disputed', JSON.stringify(c));
+  }
+});
+
+test('a payment RM confirms after the order expired is still credited by the reconciler', async () => {
+  const p = await player();
+  const { body: o } = await order(p);
+  await getDb()('payment_orders').where({ id: o.orderId })
+    .update({ created_at: new Date(Date.now() - 3 * 3600_000), expires_at: new Date(Date.now() - 2 * 3600_000) });
+  await rmPay.reconcileRm();
+  assert.equal((await orderRow(o.orderId)).status, 'expired');
+
+  rm.txns.set(o.orderId, txnFor(o.orderId, 490));
+  await getDb()('payment_orders').where({ id: o.orderId }).update({ last_checked_at: new Date(Date.now() - 3600_000) });
+  await rmPay.reconcileRm();
+  assert.equal((await orderRow(o.orderId)).status, 'paid');
+  assert.equal(await balanceOf(p.userId), 100);
 });
 
 test('the redirect back from RM is display-only: there is no route that takes its status', async () => {

@@ -158,7 +158,7 @@ Code: `backend/src/services/rm/client.js` (REST, signing, token), `backend/src/s
 (orders, webhook, reconciler, refunds), `backend/src/routes/rmPublic.js` (`/webhooks/rm`),
 `POST /api/payments/rm/orders`, `GET /api/payments/orders/:id`, `npm run refund:rm -w @snooker/backend`,
 the bot's `coins-added` notify, and the store's MYR buttons (`game/src/store.js`). Tests:
-`backend/test/rmPayments.test.js` (22, SQLite and Postgres) and `npm run smoke:rm -w @snooker/game`
+`backend/test/rmPayments.test.js` (26, SQLite and Postgres) and `npm run smoke:rm -w @snooker/game`
 (14 checks, needs only vite).
 
 The rules, as set by the user on 2026-09-24 (they replace sections 4.3–4.5 above where they differ):
@@ -169,14 +169,15 @@ The rules, as set by the user on 2026-09-24 (they replace sections 4.3–4.5 abo
   straight back into the Mini App's store, which follows the order. Any status RM adds to that trip is
   display-only; nothing reads it. There is no backend return page.
 - **`notifyUrl` = `PUBLIC_BACKEND_URL/webhooks/rm`.**
-- **Coins are credited ONLY by the verified webhook**: RM's signature must verify, the status must be
-  SUCCESS, and the amount and currency must be the order's (otherwise the order is `disputed`, no coins).
-  Idempotent on RM's transaction id (ledger ref `rm:<transactionId>`, UNIQUE). A late webhook for an order
-  we had expired still credits: the money was taken.
-- **The reconciler never credits.** It closes failed/cancelled/expired orders and takes refunds back. If
-  RM's query says SUCCESS and no webhook has credited it, the order stays `pending` (not expired) and the
-  event `paid_awaiting_webhook` is logged, with a `logger.error` after 15 minutes for a person to act
-  (RM retries the webhook; the fix otherwise is to have RM resend it).
+- **Coins are credited only by RM itself, two ways**: the verified webhook (RM's signature must verify),
+  or the reconciler's own signed server-to-server query to RM's API (decided by the user later on
+  2026-09-24, so a lost webhook doesn't leave a paid player without coins). Either way the status must be
+  SUCCESS and the amount, currency and order id must be the order's; otherwise the order is `disputed`
+  and no coins move. Both go through one function with one idempotency key, RM's transaction id (ledger
+  ref `rm:<transactionId>`, UNIQUE): whichever comes second is a no-op. A late payment for an order we
+  had expired still credits: the money was taken.
+- **The reconciler** also closes failed/cancelled/expired orders and takes refunds back. It never reads
+  the redirect or anything the client says.
 - **The Mini App's poll is read-only**: it reads our order row and never asks RM.
 - **`PAYMENTS_RM_ENABLED` stays false in production.**
 
@@ -186,8 +187,8 @@ Other details:
   "can be" left out). Either form is RM's key over our exact body, nonce and time.
 - **Owner alerts are `logger.error` lines** ("rm payment needs a person", "order we do not have"). No other
   alert channel exists yet.
-- **Reconciler every 60 s** (its own interval): open orders older than 2 min, paid orders from the last
-  30 days once a day.
+- **Reconciler every 60 s** (its own interval): open orders older than 2 min, expired orders from the
+  last day every 30 min, paid orders from the last 30 days once a day.
 - **REVERSED** counts as a full refund. **Partial refunds** take back ceil(coins × refunded ÷ price), each
   new refunded total debiting only the difference (ref `rm-refund:<txn>:<total>`).
 - A payment refunded before we ever credited it adds and takes nothing (order `refunded`).
