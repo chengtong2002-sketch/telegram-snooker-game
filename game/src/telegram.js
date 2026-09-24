@@ -138,3 +138,21 @@ export const cloudStorage = cloudStorageWorks
     remove: (key) => callCloud('removeItem', [key], (err) => !err, false),
   }
   : null;
+
+/** Can this client pay a Stars invoice? openInvoice arrived in Bot API 6.1. */
+export const canPayInvoices = () => isTelegram() && (tg.isVersionAtLeast?.('6.1') ?? false) && typeof tg.openInvoice === 'function';
+
+/**
+ * Open a Stars invoice over the Mini App. Resolves with Telegram's status:
+ * 'paid', 'cancelled', 'failed' or 'pending'. 'paid' means Telegram took the
+ * Stars; the coins are credited by the server once the bot hears of it.
+ */
+export function openInvoice(url) {
+  return new Promise((resolve) => {
+    try {
+      tg.openInvoice(url, (status) => resolve(status));
+    } catch {
+      resolve('failed');
+    }
+  });
+}

@@ -11,7 +11,9 @@
 import catalog from '@snooker/cosmetics/cosmetics.json';
 import * as api from './api.js';
 import { itemSvg, svgDataUrl } from './skinLoader.js';
-import { showBackButton, haptic } from './telegram.js';
+import {
+  showBackButton, haptic, canPayInvoices, openInvoice,
+} from './telegram.js';
 
 const $ = (id) => document.getElementById(id);
 const fmt = (n) => Number(n ?? 0).toLocaleString('en');
@@ -142,7 +144,7 @@ function paint() {
   if (tab === 'coins') {
     el.list.replaceChildren(...data.packs.map(packRow));
     el.note.textContent = 'Coins buy cues and cue balls, and nothing else: they never affect matches or rewards. '
-      + 'Buying coins with Telegram Stars arrives in the next update.';
+      + (starsNote(data) ?? 'Paid with Telegram Stars. Purchases are final; see /terms in the bot.');
     return;
   }
 
@@ -203,11 +205,23 @@ function packRow(pack) {
   amount.append(coin(), node('span', null, `${fmt(pack.coins)} coins`));
   const action = node('div', 'item-action');
   const buy = node('button', 'item-btn', pack.stars ? `⭐ ${fmt(pack.stars)}` : 'Soon');
-  buy.disabled = true;
-  buy.title = 'Coming in the next update';
+  const why = !pack.stars ? 'Not on sale yet' : starsNote(session.data);
+  buy.disabled = Boolean(why);
+  if (why) buy.title = why;
+  else {
+    buy.setAttribute('aria-label', `Buy ${fmt(pack.coins)} coins for ${fmt(pack.stars)} Stars`);
+    buy.onclick = () => buyPack(pack);
+  }
   action.append(buy);
   li.append(amount, action);
   return li;
+}
+
+/** Why Stars can't be used here, or null when they can. */
+function starsNote(data) {
+  if (!data?.starsEnabled) return 'Buying coins with Telegram Stars is coming soon.';
+  if (!canPayInvoices()) return 'Open the game in Telegram to buy coins with Stars.';
+  return null;
 }
 
 /* ---------- actions ---------- */
@@ -277,6 +291,59 @@ async function buy(item) {
   } finally {
     s.busy = false;
   }
+}
+
+/**
+ * Buy a coin pack with Stars. The server makes the invoice and Telegram takes
+ * the payment; the coins arrive when the bot tells the server, a moment later.
+ * The screen waits for the balance to move rather than trusting 'paid' alone.
+ */
+async function buyPack(pack) {
+  const s = session;
+  if (!s || s.busy) return;
+  s.busy = true;
+  try {
+    const { invoiceLink } = await api.starsInvoice(pack.id);
+    if (s !== session) return;
+    const before = s.data.balance;
+    const status = await openInvoice(invoiceLink);
+    if (s !== session) return;
+    if (status === 'cancelled') return;
+    if (status === 'failed') {
+      haptic('error');
+      s.hud.toast('The payment did not go through. No Stars were taken.', 'foul', 4000);
+      return;
+    }
+    haptic('success');
+    s.hud.toast(status === 'paid' ? 'Paid. Adding your coins…' : 'Payment pending. Your coins will follow.', 'good', 3000);
+    await waitForCoins(s, before);
+  } catch (err) {
+    if (s !== session) return;
+    haptic('error');
+    s.hud.toast(err.offline ? 'No connection. Nothing was charged.' : err.message, 'foul', 4000);
+  } finally {
+    s.busy = false;
+  }
+}
+
+/** Reload until the balance goes up (the credit has landed), for up to ~30 s. */
+async function waitForCoins(s, before) {
+  for (let i = 0; i < 15; i += 1) {
+    await new Promise((r) => setTimeout(r, 2000));
+    if (s !== session) return;
+    try {
+      const data = await api.store();
+      if (s !== session) return;
+      adopt(data);
+      if (data.balance > before) {
+        s.hud.toast(`+${fmt(data.balance - before)} coins`, 'good', 2500);
+        return;
+      }
+    } catch {
+      // Keep waiting: a dropped poll changes nothing.
+    }
+  }
+  s.hud.toast('Your coins are on their way. They will show here within a few minutes.', '', 5000);
 }
 
 async function equipItem(item) {

@@ -7,6 +7,7 @@ import {
   welcomeMessage, helpMessage, leaderboardMessage, walletLinkedMessage, walletUnlinkedMessage,
   statusMessage, statusMatchMessage,
   matchedMessage, yourTurnMessage, frameCheckpointMessage, matchOverMessage, matchAbandonedMessage, walletChangedMessage,
+  coinsAddedMessage, paySupportMessage, termsMessage,
 } from '../src/messages.js';
 
 /**
@@ -73,6 +74,10 @@ const ALL = {
     won: false, framesWon: [0, 0], conceded: true, youConceded: true, forfeit: 'idle',
   }),
   'match abandoned': () => matchAbandonedMessage({ framesWon: [0, 0], timeouts: HOSTILE }),
+  'coins added': () => coinsAddedMessage({ coins: 100, balance: 350 }),
+  paysupport: () => paySupportMessage({ supportHandle: HOSTILE }),
+  'paysupport (no handle)': () => paySupportMessage(),
+  terms: () => termsMessage(),
   'wallet changed': () => walletChangedMessage({ action: 'linked', address: HOSTILE, network: HOSTILE }, { supportHandle: HOSTILE }),
   'wallet unlinked (notice)': () => walletChangedMessage({ action: 'unlinked', address: HOSTILE, network: HOSTILE }, { supportHandle: HOSTILE }),
 };
@@ -103,6 +108,7 @@ test('no Markdown markup is left in any message', () => {
     'wallet changed': () => walletChangedMessage({ action: 'linked', address: 'EQabc', network: 'testnet' }, { supportHandle: '@help' }),
     'wallet unlinked (notice)': () => walletChangedMessage({ action: 'unlinked', address: 'EQabc', network: 'testnet' }),
     'match abandoned': () => matchAbandonedMessage({ framesWon: [0, 0], timeouts: 4 }),
+    paysupport: () => paySupportMessage({ supportHandle: '@help' }),
   };
   for (const [label, build] of Object.entries(plain)) {
     assert.doesNotMatch(build().text, /[*`]/, `${label}: Markdown marker left in`);

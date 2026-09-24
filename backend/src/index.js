@@ -3,6 +3,7 @@ import { config, assertProductionConfig } from './config.js';
 import { logger } from './logger.js';
 import { buildApp } from './app.js';
 import { sweepShotClocks } from './services/matchService.js';
+import { reconcileStars } from './services/stars.js';
 
 assertProductionConfig(logger);
 if (process.env.SHOT_CLOCK_SECONDS && Number(process.env.SHOT_CLOCK_SECONDS) !== config.shotClockSeconds) {
@@ -39,10 +40,19 @@ const challengeReaper = setInterval(() => {
 }, 10 * 60_000);
 challengeReaper.unref();
 
+// A Stars payment the bot never passed on (bot or backend down at the time) is
+// still in Telegram's transaction list: credit it from there. Does nothing
+// while Stars are switched off.
+const starsReconciler = setInterval(() => {
+  reconcileStars().catch((err) => logger.error({ err: err.message }, 'stars reconcile failed'));
+}, 5 * 60_000);
+starsReconciler.unref();
+
 async function shutdown(signal) {
   logger.info({ signal }, 'shutting down');
   clearInterval(sweeper);
   clearInterval(challengeReaper);
+  clearInterval(starsReconciler);
   server.close(async () => {
     await closeDb();
     process.exit(0);

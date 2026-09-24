@@ -64,6 +64,7 @@ export function helpMessage() {
     '/wallet — link or view your TON wallet',
     '/leaderboard — top breaks this period',
     '/status — your matches and reward standing',
+    '/terms — terms for coin purchases · /paysupport — help with one',
     '',
     '<b>Fouls</b> — 4 points minimum, turn passes:',
     'missing everything · hitting the wrong ball first · potting the cue ball · knocking a ball off the table.',
@@ -223,6 +224,40 @@ export function matchOverMessage(event) {
     );
   }
   return message(lines);
+}
+
+/* ---------- Stars payments ---------- */
+
+/** After a successful Stars payment has been credited. */
+export function coinsAddedMessage({ coins, balance }) {
+  return message([
+    html`✅ <b>${Number(coins).toLocaleString('en')} coins added.</b>`,
+    html`Your balance is ${Number(balance).toLocaleString('en')} coins. Open the store to spend them on cues and cue balls.`,
+  ]);
+}
+
+/** /paysupport: Telegram requires it of every bot that takes Stars. */
+export function paySupportMessage({ supportHandle = '' } = {}) {
+  return message([
+    '<b>Payment support</b>',
+    supportHandle
+      ? html`For anything about a coin purchase, message ${supportHandle} with the date and the amount of Stars.`
+      : 'For anything about a coin purchase, reply here with the date and the amount of Stars, and we will get back to you.',
+    'Coins you paid for and did not receive are always added or refunded.',
+    'Telegram support cannot help with purchases made in this bot.',
+  ]);
+}
+
+/** /terms: what a coin purchase is, and is not. */
+export function termsMessage() {
+  return message([
+    '<b>Terms for coin purchases</b>',
+    'Coins are bought with Telegram Stars and spent in the store on cues and cue balls. That is all they do.',
+    'Coins never affect a match, never enter a player into anything and never count toward token rewards.',
+    'Coins cannot be sold, transferred or exchanged for money or tokens.',
+    'Items bought with coins are yours for good. Purchases are final, except where a refund is required.',
+    'If a purchase is refunded, its coins are taken back, even if that leaves your balance below zero; buying is paused until it is positive again.',
+  ]);
 }
 
 /** "match-abandoned": both players let the shot clock run out in turn. */

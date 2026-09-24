@@ -34,6 +34,8 @@ export const config = {
   webhookUrl: process.env.BOT_WEBHOOK_URL ?? '',
   tonNetwork: process.env.TON_NETWORK ?? 'testnet',
   supportHandle: process.env.SUPPORT_HANDLE ?? '',
+  // Telegram's test environment (a bot made on the test server). The backend reads the same variable.
+  telegramTestEnv: /^(1|true|yes)$/i.test(process.env.TELEGRAM_TEST_ENV ?? ''),
 };
 
 /** Same rule as the backend: NODE_ENV=production, or on Railway at all. */

@@ -3,7 +3,7 @@ import * as api from '../api.js';
 import { config } from '../config.js';
 import {
   welcomeMessage, helpMessage, leaderboardMessage, walletLinkedMessage, walletUnlinkedMessage,
-  statusMessage, statusMatchMessage,
+  statusMessage, statusMatchMessage, paySupportMessage, termsMessage,
 } from '../messages.js';
 import {
   menuKeyboard, matchKeyboard, practiceKeyboard, walletKeyboard, canOpenGame,
@@ -111,6 +111,15 @@ export function registerCommands(bot) {
   bot.command('wallet', handleWallet);
   bot.command('leaderboard', handleLeaderboard);
   bot.command('status', handleStatus);
+  // Telegram requires both of a bot that sells for Stars.
+  bot.command('paysupport', (ctx) => {
+    const { text, parse_mode } = paySupportMessage({ supportHandle: config.supportHandle });
+    return ctx.reply(text, { parse_mode });
+  });
+  bot.command('terms', (ctx) => {
+    const { text, parse_mode } = termsMessage();
+    return ctx.reply(text, { parse_mode });
+  });
 
   bot.callbackQuery('play', async (ctx) => {
     await ctx.answerCallbackQuery();
@@ -134,4 +143,6 @@ export const COMMAND_LIST = [
   { command: 'status', description: 'Your matches and rewards' },
   { command: 'cancel', description: 'Leave the matchmaking queue' },
   { command: 'help', description: 'How the game works' },
+  { command: 'terms', description: 'Terms for coin purchases' },
+  { command: 'paysupport', description: 'Help with a coin purchase' },
 ];

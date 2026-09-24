@@ -9,7 +9,8 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "test": "node --test \"test/**/*.test.js\"",
-    "grant": "node scripts/grant-coins.js"
+    "grant": "node scripts/grant-coins.js",
+    "refund:stars": "node scripts/refund-stars.js"
   },
   "dependencies": {
     "@snooker/db": "*",

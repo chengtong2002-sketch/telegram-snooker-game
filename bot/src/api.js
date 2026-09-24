@@ -1,7 +1,7 @@
 import { config } from './config.js';
 
 /** Thin client for the backend's /internal endpoints (shared-secret auth). */
-async function call(path, body) {
+async function call(path, body, { timeoutMs = 8000 } = {}) {
   const res = await fetch(`${config.backendUrl}${path}`, {
     method: 'POST',
     headers: {
@@ -9,7 +9,7 @@ async function call(path, body) {
       'x-internal-key': config.internalApiKey,
     },
     body: JSON.stringify(body ?? {}),
-    signal: AbortSignal.timeout(8000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   const text = await res.text();
   let json;
@@ -32,3 +32,9 @@ const telegramUser = (from) => ({
 export const joinQueue = (from) => call('/internal/queue/join', { telegramUser: telegramUser(from) });
 export const leaveQueue = (from) => call('/internal/queue/leave', { telegramUser: telegramUser(from) });
 export const status = (from) => call('/internal/status', { telegramUser: telegramUser(from) });
+
+/* Stars payments: the bot relays, the backend decides (backend/src/services/stars.js). */
+// Telegram gives a pre-checkout 10 s in all: leave room to answer after a slow backend.
+export const starsCheck = (body) => call('/internal/payments/stars/check', body, { timeoutMs: 5000 });
+export const starsPaid = (body) => call('/internal/payments/stars/paid', body);
+export const starsRefunded = (body) => call('/internal/payments/stars/refunded', body);

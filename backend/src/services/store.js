@@ -40,6 +40,7 @@ export async function storeView(userId) {
       equipped: equipped[item.kind] === item.id,
     })),
     packs: packsOnSale(),
+    starsEnabled: config.store.starsEnabled,
   };
 }
 

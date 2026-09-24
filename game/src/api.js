@@ -114,3 +114,6 @@ export const store = () => request('/store');
 export const buyItem = (itemId) => request('/store/buy', { method: 'POST', body: { itemId } });
 /** @param {'cue'|'ball'} kind */
 export const equipItem = (kind, itemId) => request('/store/equip', { method: 'POST', body: { kind, itemId } });
+
+/** A Stars invoice for one coin pack. Only the pack id is sent: the server prices it. */
+export const starsInvoice = (packId) => request('/payments/stars/invoice', { method: 'POST', body: { packId } });

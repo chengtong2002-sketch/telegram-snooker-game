@@ -75,6 +75,16 @@ export const config = {
 
   store: {
     packs: parsePacks(process.env.COIN_PACKS),
+    // Off by default: on the production bot a Star is real money. Prove it on
+    // Telegram's test environment first (TELEGRAM_TEST_ENV + a test-server bot).
+    starsEnabled: bool(process.env.PAYMENTS_STARS_ENABLED, false),
+  },
+
+  telegram: {
+    // Only tests point this elsewhere (a local stub of the Bot API).
+    apiRoot: (process.env.TELEGRAM_API_ROOT ?? 'https://api.telegram.org').replace(/\/+$/, ''),
+    // Telegram's test environment: same host, /bot<token>/test/<method>.
+    testEnv: bool(process.env.TELEGRAM_TEST_ENV, false),
   },
 
   // Allows local dev without a real Telegram client.

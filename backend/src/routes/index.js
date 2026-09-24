@@ -7,6 +7,7 @@ import rewardRoutes from './rewards.js';
 import statsRoutes from './stats.js';
 import syncRoutes from './sync.js';
 import storeRoutes from './store.js';
+import paymentRoutes from './payments.js';
 import internalRoutes from './internal.js';
 
 const router = Router();
@@ -21,6 +22,7 @@ router.use('/rewards', rewardRoutes);
 router.use('/stats', statsRoutes);
 router.use('/sync', syncRoutes);
 router.use('/store', storeRoutes);
+router.use('/payments', paymentRoutes);
 
 export { internalRoutes };
 export default router;
