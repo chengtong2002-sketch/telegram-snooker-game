@@ -8,7 +8,10 @@
  *   - the cushion and pocket-mouth geometry, at the physics depth and at the
  *     depth the renderer draws
  *   - where every ball comes to rest after one fixed break-off, which catches
- *     a change to the simulation code itself, not just to its numbers.
+ *     a change to the simulation code itself, not just to its numbers
+ *   - the same for four spin shots (draw, follow, left and right side), added
+ *     Sep 24 with spin. Zero-spin shots are also held bit-for-bit by
+ *     shared/sim/test/zeroSpin.test.js, recorded before spin existed.
  *
  * If a physics or geometry change is intended, re-record deliberately:
  *   UPDATE_SIM_SNAPSHOT=1 npm test -w @snooker/game
@@ -43,6 +46,21 @@ function current() {
     angle: 0.03, power: 0.9, cuePlacement: { x: 62, y: sim.CENTRE_Y + 6 },
   });
 
+  // One shot each way: a straight red for draw and follow, and a ball sent
+  // into a cushion with side, where side shows.
+  const straightRed = [{ id: 'cue', x: 150, y: sim.CENTRE_Y }, { id: 'red1', x: 200, y: sim.CENTRE_Y }];
+  const toCushion = [{ id: 'cue', x: 120, y: 60 }, { id: 'black', x: 300, y: 120 }];
+  const spinShot = (balls, shot) => {
+    const r = sim.simulateShot(balls, shot);
+    return { steps: r.steps, balls: r.balls.map(({ id, x, y, potted }) => ({ id, x, y, potted })) };
+  };
+  const spinShots = {
+    draw: spinShot(straightRed, { angle: 0, power: 0.9, spin: { x: 0, y: -0.7 } }),
+    follow: spinShot(straightRed, { angle: 0, power: 0.6, spin: { x: 0, y: 0.7 } }),
+    left: spinShot(toCushion, { angle: -1.2, power: 0.6, spin: { x: -0.7, y: 0.1 } }),
+    right: spinShot(toCushion, { angle: -1.2, power: 0.6, spin: { x: 0.7, y: -0.1 } }),
+  };
+
   return rounded({
     constants,
     cushions: sim.cushionGeometry(),
@@ -53,6 +71,7 @@ function current() {
       firstContact: breakOff.firstContact ?? null,
       balls: breakOff.balls.map(({ id, x, y, potted }) => ({ id, x, y, potted })),
     },
+    spinShots,
   });
 }
 
@@ -69,6 +88,14 @@ test('table geometry and physics match the recorded snapshot', () => {
     assert.deepEqual(now[key], recorded[key], `${key} changed — see the header of this file`);
   }
   assert.deepEqual(Object.keys(now), Object.keys(recorded));
+});
+
+test('the spin shots each end somewhere different', () => {
+  // Otherwise the spin section would guard nothing.
+  const { spinShots } = current();
+  const cue = (k) => spinShots[k].balls.find((b) => b.id === 'cue');
+  assert.ok(cue('follow').x - cue('draw').x > 30, 'follow ends well beyond draw');
+  assert.ok(Math.abs(cue('left').x - cue('right').x) > 3 || Math.abs(cue('left').y - cue('right').y) > 3, 'left and right side part');
 });
 
 test('the break-off actually exercises the physics', () => {

@@ -37,8 +37,9 @@ const STEPS_PER_FRAME = Math.round((1000 / 60) / PHYSICS.dt); // 5 at dt = 1/300
 export class Game {
   constructor({
     mode, matchId, me, hud, renderer, controls, sound = null, skins = null, mySkins = () => ({}),
-    onExit = null,
+    onExit = null, devSpin = null,
   }) {
+    this.devSpin = devSpin;       // dev builds only: practice spin for feel-testing (devSpin.js)
     this.mode = mode;             // 'practice' | 'pvp'
     this.matchId = matchId;
     this.me = me;
@@ -273,6 +274,10 @@ export class Game {
     }
     const shot = { angle: aim.angle, power: aim.power };
     if (this.pendingCuePlacement) shot.cuePlacement = this.pendingCuePlacement;
+    if (this.mode === 'practice') {
+      const spin = this.devSpin?.current();
+      if (spin) shot.spin = spin;
+    }
 
     this.phase = 'animating';
     this.controls.setEnabled(false);

@@ -32,6 +32,7 @@ const renderer = new TableRenderer(canvas, { cueLayer: document.getElementById('
 // Cue and cue-ball skins. The player's own until a turn says otherwise (in PvP
 // they follow the shooter); in dev, ?cue=…&ball=… previews any item.
 const skins = createSkinSwitcher(renderer);
+let devSpin = null; // dev builds only, see startGame
 skins.show(mySkinIds());
 // Read live, so the Settings toggle takes effect on the next sound.
 const sound = installTableSound({ isEnabled: soundEnabled });
@@ -125,6 +126,7 @@ let currentMe = null;
 function leaveTableForLobby() {
   game?.destroy();
   game = null;
+  devSpin?.show(false);
   controls?.setEnabled(false);
   controls?.setPlacing(false);
   hud.closeModal();
@@ -419,8 +421,13 @@ function waitForMatch() {
 
 async function startGame(mode, matchId, me, controls) {
   game?.destroy();
+  // Dev builds only: a stand-in spin control for feel-testing practice shots.
+  if (import.meta.env.DEV) {
+    devSpin ??= (await import('./devSpin.js')).createDevSpin();
+    devSpin.show(mode === 'practice');
+  }
   game = new Game({
-    mode, matchId, me, hud, renderer, controls, sound, skins, mySkins: mySkinIds,
+    mode, matchId, me, hud, renderer, controls, sound, skins, mySkins: mySkinIds, devSpin,
     onExit: () => leaveTableForLobby(),
   });
   try {

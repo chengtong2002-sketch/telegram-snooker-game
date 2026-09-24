@@ -5,6 +5,7 @@ import {
 } from './constants.js';
 import { cushionGeometry } from './table.js';
 import { installExactContacts, markCircle } from './contacts.js';
+import { normaliseSpin, createSpin, clothStep, sliding } from './spin.js';
 
 const { Engine, Bodies, Body, Composite, Events, Vertices, Resolver } = Matter;
 
@@ -74,7 +75,9 @@ const speedCmPerSec = (body) => matterToCmPerSec(Math.hypot(body.velocity.x, bod
  * happened. Same code, same fixed timestep, so the two agree.
  *
  * @param {Array} balls  Ball records ({id,color,value,x,y,potted}).
- * @param {{angle:number,power:number,cuePlacement?:{x,y}}} shot
+ * @param {{angle:number,power:number,cuePlacement?:{x,y},spin?:{x,y}}} shot
+ *   spin: where the tip meets the cue ball (spin.js). None or {0,0} runs
+ *   none of the spin code, so such a shot plays exactly as before spin.
  */
 export function createSimulation(balls, shot) {
   const working = balls.map((b) => ({ ...b }));
@@ -96,6 +99,8 @@ export function createSimulation(balls, shot) {
 
   const events = [];
   const state = { step: 0, firstContact: null, done: false };
+  // Null unless the shot has spin: every spin line below is behind it.
+  let spin = null;
 
   Events.on(engine, 'collisionStart', (evt) => {
     for (const pair of evt.pairs) {
@@ -113,6 +118,11 @@ export function createSimulation(balls, shot) {
         const ballBody = a.ballId ? a : b;
         if (ballBody.ballId) {
           events.push({ type: 'cushion', ball: ballBody.ballId, step: state.step });
+          if (spin && ballBody.ballId === 'cue') {
+            // The record's normal points from B to A; we want cushion → ball.
+            const k = ballBody === a ? 1 : -1;
+            spin.cushion = { nx: pair.collision.normal.x * k, ny: pair.collision.normal.y * k };
+          }
         }
       }
     }
@@ -126,6 +136,8 @@ export function createSimulation(balls, shot) {
       x: Math.cos(shot.angle) * v,
       y: Math.sin(shot.angle) * v,
     });
+    const tip = normaliseSpin(shot.spin);
+    if (tip && power > 0) spin = createSpin(tip, shot.angle, power * MAX_SHOT_SPEED);
   } else {
     state.done = true;
   }
@@ -142,6 +154,15 @@ export function createSimulation(balls, shot) {
   function step() {
     if (state.done) return true;
     Engine.update(engine, PHYSICS.dt);
+
+    // Spin works on the cue ball's true velocity after this step's collisions
+    // (getVelocity includes the impulse; body.velocity catches up next step).
+    const cueBody = spin && bodies.get('cue');
+    if (cueBody) {
+      const vel = Body.getVelocity(cueBody);
+      const [vx, vy] = clothStep(spin, matterToCmPerSec(vel.x), matterToCmPerSec(vel.y), PHYSICS.dt / 1000);
+      Body.setVelocity(cueBody, { x: cmPerSecToMatter(vx), y: cmPerSecToMatter(vy) });
+    }
 
     for (const [id, body] of [...bodies.entries()]) {
       const pocket = POCKETS.find(
@@ -168,9 +189,20 @@ export function createSimulation(balls, shot) {
 
     let moving = false;
     for (const body of bodies.values()) {
+      // A slow cue ball with spin still to give is not at rest: stunned dead
+      // on an object ball, its backspin is about to pull it back.
+      if (spin && body.ballId === 'cue') {
+        const vel = Body.getVelocity(body);
+        if (sliding(spin, matterToCmPerSec(vel.x), matterToCmPerSec(vel.y))) {
+          moving = true;
+          continue;
+        }
+      }
       if (speedCmPerSec(body) < PHYSICS.restSpeed) {
         Body.setVelocity(body, { x: 0, y: 0 });
         Body.setAngularVelocity(body, 0);
+        if (spin && body.ballId === 'cue') spin = null; // at rest and rolling: nothing left
+
       } else {
         moving = true;
       }

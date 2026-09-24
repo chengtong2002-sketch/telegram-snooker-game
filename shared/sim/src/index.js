@@ -6,3 +6,4 @@ export * from './match.js';
 export * from './ai.js';
 export * from './clock.js';
 export * from './table.js';
+export * from './spin.js';
