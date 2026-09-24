@@ -281,6 +281,35 @@ test('switched off, no invoice is made; unknown packs are refused', async () => 
   }
 });
 
+test('switched off, only allowlisted Telegram ids may buy, and they get the whole flow', async () => {
+  const owner = await player();
+  const other = await player();
+  config.store.starsEnabled = false;
+  config.store.starsAllowTelegramIds = new Set([String(owner.tg)]);
+  try {
+    assert.equal((await call('/api/store', { token: owner.token })).body.starsEnabled, true);
+    assert.equal((await call('/api/store', { token: other.token })).body.starsEnabled, false);
+    assert.equal((await invoice(other)).status, 503, 'everyone else still sees it switched off');
+
+    const inv = await invoice(owner);
+    assert.equal(inv.status, 200);
+    const chargeId = `allow-${owner.tg}`;
+    assert.equal((await check({ orderId: inv.body.orderId, telegramId: owner.tg, currency: 'XTR', totalAmount: inv.body.stars })).body.ok, true);
+    const body = { orderId: inv.body.orderId, telegramId: owner.tg, currency: 'XTR', totalAmount: inv.body.stars, chargeId };
+    assert.equal((await paid(body)).body.status, 'credited');
+    assert.equal((await paid(body)).body.status, 'duplicate', 'credited once');
+    assert.equal(await balanceOf(owner.userId), 100);
+
+    const back = await call('/internal/payments/stars/refunded', { method: 'POST', internal: true, body: { chargeId } });
+    assert.equal(back.body.status, 'debited');
+    assert.equal(await balanceOf(owner.userId), 0, 'the refund takes the coins back');
+    assert.deepEqual(await ledgerRefs(owner.userId), [`stars:${chargeId}`, `stars-refund:${chargeId}`]);
+  } finally {
+    config.store.starsEnabled = true;
+    config.store.starsAllowTelegramIds = new Set();
+  }
+});
+
 test('players cannot reach the bot-only or owner-only paths', async () => {
   const p = await player();
   for (const path of ['/internal/payments/stars/check', '/internal/payments/stars/paid', '/internal/payments/stars/refunded']) {

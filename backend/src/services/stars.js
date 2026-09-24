@@ -34,6 +34,15 @@ export const STARS_ORDER_TTL_MS = 60 * 60 * 1000;
 
 const newOrderId = () => `st${randomBytes(11).toString('hex')}`; // 24 characters, RM's limit too
 
+/** May this player buy with Stars? Everyone when switched on, else only the allowlist. */
+export function starsEnabledFor(user) {
+  if (config.store.starsEnabled) return true;
+  return Boolean(user) && config.store.starsAllowTelegramIds.has(String(user.telegram_id));
+}
+
+/** Is Stars on for anyone at all (the reconciler has work to do)? */
+const starsInUse = () => config.store.starsEnabled || config.store.starsAllowTelegramIds.size > 0;
+
 const packFor = (packId) => config.store.packs.find((p) => p.id === packId && p.stars > 0) ?? null;
 
 /**
@@ -46,7 +55,8 @@ const packFor = (packId) => config.store.packs.find((p) => p.id === packId && p.
  *   provider_error  Telegram refused or did not answer; the order is marked failed
  */
 export async function createStarsInvoice(userId, packId) {
-  if (!config.store.starsEnabled) return { status: 'disabled' };
+  const buyer = await getDb()('users').where({ id: userId }).first();
+  if (!starsEnabledFor(buyer)) return { status: 'disabled' };
   const pack = packFor(packId);
   if (!pack) return { status: 'unknown_pack' };
 
@@ -257,7 +267,7 @@ export async function refundStarsOrder(orderId, { actor }) {
  * the gap between two runs.
  */
 export async function reconcileStars() {
-  if (!config.store.starsEnabled) return { credited: 0, expired: 0 };
+  if (!starsInUse()) return { credited: 0, expired: 0 };
   const db = getDb();
   let credited = 0;
 

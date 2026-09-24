@@ -10,6 +10,7 @@ import { items, itemById } from '@snooker/cosmetics';
 import { config } from '../config.js';
 import { balanceOf, ownedItemIds } from './coins.js';
 import { equippedIds, EQUIPPED_COLUMN } from './equipped.js';
+import { starsEnabledFor } from './stars.js';
 
 export const KINDS = Object.freeze(['cue', 'ball']);
 
@@ -40,7 +41,7 @@ export async function storeView(userId) {
       equipped: equipped[item.kind] === item.id,
     })),
     packs: packsOnSale(),
-    starsEnabled: config.store.starsEnabled,
+    starsEnabled: starsEnabledFor(user),
     rmEnabled: config.rm.enabled,
   };
 }
