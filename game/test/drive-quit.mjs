@@ -1,17 +1,20 @@
 /**
- * Quit match smoke: the pause menu's Quit match in practice and in PvP.
+ * Pause menu smoke: Resume / Surrender / Quit, and Rejoin from the lobby.
  *
  *   npm run smoke:quit -w @snooker/game
  *
- * 1. Practice: pause → Quit match → the lobby, straight away, with no dialog
- *    and nothing added to the device's practice record.
- * 2. PvP (two ?dev= players paired through the API): pause → Quit match →
- *    "Concede this match?"; Cancel goes back to the pause menu; Concede and
- *    quit → the lobby. The server has the match completed with the opponent as
- *    winner, and the opponent's screen offers Back to lobby.
+ * 1. Practice: pause → Quit → "Quit practice?" → Keep playing goes back to the
+ *    menu; Quit → the lobby, with nothing added to the practice record.
+ * 2. PvP Quit (two ?dev= players paired through the API): "Are you sure you
+ *    want to quit?" names the idle forfeit; Quit → the lobby while the match
+ *    carries on (not conceded). The lobby's main button is Rejoin match; the
+ *    opponent plays while we are away; Rejoin shows the table as it now is.
+ *    When the opponent then surrenders, the lobby goes back to PLAY by itself.
+ * 3. PvP Surrender: "Surrender this match? Your opponent wins." → Cancel goes
+ *    back to the menu; Surrender → the match-over sheet, opponent the winner.
  *
  * Needs the backend (ALLOW_DEV_AUTH=true) and Vite running, and an installed
- * Chrome. Creates dev players and a match in whatever database the backend
+ * Chrome. Creates dev players and matches in whatever database the backend
  * uses: point DATABASE_URL at a throwaway one.
  */
 import path from 'node:path';
@@ -42,14 +45,38 @@ const devLogin = async (slot) => api('/auth/telegram', {
   method: 'POST', body: { devUser: { id: 999_000_000 + slot, first_name: `Dev ${slot}`, username: `dev${slot}` } },
 });
 
+/** Two fresh dev players in a new match; seat 0 (`a`) breaks. */
+async function pair(base) {
+  const slots = [base + Math.floor(Math.random() * 10), base + 10 + Math.floor(Math.random() * 10)];
+  const [a, b] = await Promise.all(slots.map(devLogin));
+  for (const p of [a, b]) {
+    // A leftover match from an earlier run would pair these two with it.
+    for (const m of (await api('/match/active', { token: p.token })).matches ?? []) {
+      await api(`/match/${m.id}/concede`, { method: 'POST', token: p.token, body: { via: 'menu' } });
+    }
+    await api('/match/queue', { method: 'DELETE', token: p.token });
+  }
+  await api('/match/queue', { method: 'POST', token: a.token });
+  const paired = await api('/match/queue', { method: 'POST', token: b.token });
+  return { slots, a, b, matchId: paired.matchId ?? paired.match?.id };
+}
+
+/** A shot that touches nothing: a miss, 4 to the opponent, turn passes. */
+let seq = 0;
+const nudge = (matchId, p) => api(`/match/${matchId}/shot`, {
+  method: 'POST', token: p.token, body: { resultId: `smoke-quit-${Date.now()}-${seq++}`, shot: { angle: Math.PI, power: 0.01 } },
+});
+
 const modal = (page) => page.evaluate(() => ({
   open: !document.getElementById('overlay').hidden,
   title: document.getElementById('overlay-title').textContent,
-  body: document.getElementById('overlay-body').textContent,
+  body: document.getElementById('overlay-body').textContent.replace(/\s+/g, ' '),
   buttons: [...document.querySelectorAll('#overlay-actions button')].map((b) => b.textContent),
 }));
-const lobbyShown = (page) => page.evaluate(() => !document.getElementById('lobby').hidden);
 const click = (page, label) => page.locator('#overlay-actions button', { hasText: label }).first().click();
+const buttonLook = (page, label) => page.locator('#overlay-actions button', { hasText: label }).first()
+  .evaluate((el) => ({ className: el.className, color: getComputedStyle(el).color }));
+const RED = 'rgb(227, 92, 77)';
 
 const LANDSCAPE = { viewport: { width: 844, height: 390 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true };
 
@@ -67,89 +94,131 @@ try {
 
     await page.locator('#pause').click();
     const menu = await modal(page);
-    check(menu.buttons.at(-1) === 'Quit match', `Quit match is the last button (${menu.buttons.join(' | ')})`);
-    check(menu.buttons[0] === 'Resume', 'Resume stays first');
-    const style = await page.locator('#overlay-actions .btn.quit').evaluate((el) => {
-      const cs = getComputedStyle(el);
-      return { color: cs.color, border: cs.borderTopStyle, width: el.getBoundingClientRect().width, row: el.parentElement.getBoundingClientRect().width };
-    });
-    check(style.color === 'rgb(227, 92, 77)', `red text (${style.color})`);
-    check(style.border === 'solid' && Math.abs(style.width - style.row) < 1, 'its own full-width row under a divider');
-    await page.screenshot({ path: shot('pause-practice') });
+    check(menu.buttons[0] === 'Resume', `Resume on top (${menu.buttons.join(' | ')})`);
+    check(menu.buttons.includes('Quit') && !menu.buttons.includes('Surrender'), 'practice: Quit, and no Surrender');
 
-    await click(page, 'Quit match');
+    await click(page, 'Quit');
+    let m = await modal(page);
+    check(m.title === 'Quit practice?', `practice asks first: "${m.title}"`);
+    check(m.buttons.join('|') === 'Quit|Keep playing', m.buttons.join('|'));
+    await page.screenshot({ path: shot('practice-confirm') });
+    await click(page, 'Keep playing');
+    m = await modal(page);
+    check(m.title === 'Paused', 'Keep playing goes back to the menu');
+
+    await click(page, 'Quit');
+    await click(page, 'Quit');
     await page.locator('#lobby').waitFor({ state: 'visible' });
-    check(!(await modal(page)).open, 'practice: no dialog, straight to the lobby');
+    check(!(await modal(page)).open, 'practice: the lobby, no sheet over it');
     check(await page.evaluate(() => localStorage.getItem('snooker.practice')) === before, 'practice: nothing recorded');
-    check(!new URL(page.url()).searchParams.has('mode'), 'the URL no longer names the match');
+    check(!new URL(page.url()).searchParams.has('mode'), 'the URL no longer names the table');
+    check((await page.locator('#lobby-play').innerText()).trim() === 'PLAY', 'no match to rejoin: PLAY');
 
-    // The table can be entered again with one set of controls (a drag aims once).
     await page.locator('#lobby-practice').click();
     await page.waitForFunction(() => window.__snookerDebug?.phase === 'aiming');
     check(true, 'practice starts again from the lobby');
     await ctx.close();
   }
 
-  /* ---------- PvP ---------- */
+  /* ---------- PvP: Quit, then Rejoin ---------- */
   {
-    const slots = [10 + Math.floor(Math.random() * 15), 25 + Math.floor(Math.random() * 15)];
-    const [a, b] = await Promise.all(slots.map(devLogin));
-    await api('/match/queue', { method: 'DELETE', token: a.token });
-    await api('/match/queue', { method: 'DELETE', token: b.token });
-    await api('/match/queue', { method: 'POST', token: a.token });
-    const paired = await api('/match/queue', { method: 'POST', token: b.token });
-    const matchId = paired.matchId ?? paired.match?.id;
+    const { slots, a, b, matchId } = await pair(10);
     check(Boolean(matchId), `dev ${slots[0]} and dev ${slots[1]} paired`);
+    await nudge(matchId, a); // a breaks and misses: 0–4, b to play
 
-    const ctxA = await browser.newContext(LANDSCAPE);
-    const pageA = await ctxA.newPage();
-    pageA.on('pageerror', (err) => check(false, `page error: ${err.message}`));
-    await pageA.goto(`${GAME}/?mode=pvp&match=${matchId}&dev=${slots[0]}`);
-    await pageA.waitForFunction(() => ['aiming', 'waiting'].includes(window.__snookerDebug?.phase));
+    const ctx = await browser.newContext(LANDSCAPE);
+    const page = await ctx.newPage();
+    page.on('pageerror', (err) => check(false, `page error: ${err.message}`));
+    await page.goto(`${GAME}/?mode=pvp&match=${matchId}&dev=${slots[0]}`);
+    await page.waitForFunction(() => ['aiming', 'waiting'].includes(window.__snookerDebug?.phase));
 
-    await pageA.locator('#pause').click();
-    const menu = await modal(pageA);
-    check(menu.buttons.at(-1) === 'Quit match', `PvP pause menu ends with Quit match (${menu.buttons.join(' | ')})`);
-    await pageA.screenshot({ path: shot('pause-pvp') });
+    await page.locator('#pause').click();
+    const menu = await modal(page);
+    check(menu.buttons[0] === 'Resume', `Resume on top (${menu.buttons.join(' | ')})`);
+    check(menu.buttons.indexOf('Surrender') > 0 && menu.buttons.indexOf('Quit') > menu.buttons.indexOf('Surrender'),
+      'PvP: Surrender, then Quit, below Resume');
+    const surrender = await buttonLook(page, 'Surrender');
+    const quit = await buttonLook(page, 'Quit');
+    check(surrender.color === RED && /danger/.test(surrender.className), `Surrender is red (${surrender.color})`);
+    check(quit.color !== RED && !/danger|quit/.test(quit.className), `Quit is neutral (${quit.color})`);
+    await page.screenshot({ path: shot('pause-pvp') });
 
-    await click(pageA, 'Quit match');
-    let m = await modal(pageA);
-    check(m.title === 'Concede this match?', 'PvP: asks first');
-    check(m.body.includes('Your opponent wins'), 'says the opponent wins');
+    await click(page, 'Quit');
+    let m = await modal(page);
+    check(m.title === 'Are you sure you want to quit?', `asks first: "${m.title}"`);
+    check(m.body.includes("The match continues without you — if you don't return, you'll forfeit after 3 missed shots (~90s)."),
+      'says the match carries on and when it is forfeited');
+    check(m.buttons.join('|') === 'Quit|Stay in the match', m.buttons.join('|'));
+    await page.screenshot({ path: shot('confirm-pvp-quit') });
+    await click(page, 'Stay in the match');
+    check((await modal(page)).title === 'Paused', 'Stay goes back to the menu');
+
+    await click(page, 'Quit');
+    await click(page, 'Quit');
+    await page.locator('#lobby').waitFor({ state: 'visible' });
+    let match = (await api(`/match/${matchId}`, { token: a.token })).match;
+    check(match.status === 'active' && !match.ended, 'quitting concedes nothing: the match is still on');
+    await page.locator('#lobby-play', { hasText: 'REJOIN MATCH' }).waitFor({ timeout: 8000 });
+    check(true, 'the lobby offers Rejoin match');
+    await page.screenshot({ path: shot('lobby-rejoin') });
+
+    // The opponent plays on while we are away: they miss too, 4–4 and our turn.
+    await nudge(matchId, b);
+    match = (await api(`/match/${matchId}`, { token: a.token })).match;
+    check(match.frame.scores.join('–') === '4–4', `the server moved on: ${match.frame.scores.join('–')}`);
+
+    await page.locator('#lobby-play').click();
+    await page.waitForFunction(() => window.__snookerDebug?.phase === 'aiming');
+    const shown = await page.evaluate(() => [
+      document.getElementById('score-a').textContent, document.getElementById('score-b').textContent,
+      window.__snookerDebug.ballsOnTable,
+    ]);
+    check(shown[0] === '4' && shown[1] === '4', `Rejoin shows the table as it stands: ${shown[0]}–${shown[1]}`);
+    check(shown[2] === match.frame.balls.filter((x) => !x.potted).length, `the same balls on the table (${shown[2]})`);
+    check(new URL(page.url()).searchParams.get('match') === matchId, 'the URL names the match again');
+    await page.screenshot({ path: shot('rejoined') });
+
+    // Leave again; the opponent surrenders; the lobby notices without a reload.
+    await page.locator('#pause').click();
+    await click(page, 'Quit');
+    await click(page, 'Quit');
+    await page.locator('#lobby-play', { hasText: 'REJOIN MATCH' }).waitFor({ timeout: 8000 });
+    await api(`/match/${matchId}/concede`, { method: 'POST', token: b.token, body: { via: 'menu' } });
+    await page.locator('#lobby-play', { hasText: /^PLAY$/ }).waitFor({ timeout: 15_000 });
+    check(true, 'once the match is over, PLAY comes back');
+    await ctx.close();
+  }
+
+  /* ---------- PvP: Surrender ---------- */
+  {
+    const { slots, a, b, matchId } = await pair(60);
+    const ctx = await browser.newContext(LANDSCAPE);
+    const page = await ctx.newPage();
+    page.on('pageerror', (err) => check(false, `page error: ${err.message}`));
+    await page.goto(`${GAME}/?mode=pvp&match=${matchId}&dev=${slots[0]}`);
+    await page.waitForFunction(() => ['aiming', 'waiting'].includes(window.__snookerDebug?.phase));
+
+    await page.locator('#pause').click();
+    await click(page, 'Surrender');
+    let m = await modal(page);
+    check(m.title === 'Surrender this match?', `asks first: "${m.title}"`);
+    check(m.body.startsWith('Your opponent wins.'), 'says the opponent wins');
     check(m.body.includes('Your breaks still count'), 'says breaks still count');
-    check(m.buttons.join('|') === 'Concede and quit|Cancel', m.buttons.join('|'));
-    await pageA.screenshot({ path: shot('confirm-pvp') });
-
-    await click(pageA, 'Cancel');
-    m = await modal(pageA);
-    check(m.title === 'Paused', 'Cancel goes back to the pause menu');
+    check(m.buttons.join('|') === 'Surrender|Cancel', m.buttons.join('|'));
+    await page.screenshot({ path: shot('confirm-surrender') });
+    await click(page, 'Cancel');
+    check((await modal(page)).title === 'Paused', 'Cancel goes back to the menu');
     check((await api(`/match/${matchId}`, { token: a.token })).match.status === 'active', 'nothing conceded yet');
 
-    await click(pageA, 'Quit match');
-    await click(pageA, 'Concede and quit');
-    await pageA.locator('#lobby').waitFor({ state: 'visible' });
-    check(await lobbyShown(pageA), 'PvP: the quitter is back on the lobby');
-    await pageA.screenshot({ path: shot('after-pvp') });
-
+    await click(page, 'Surrender');
+    await click(page, 'Surrender');
+    await page.locator('#overlay-title', { hasText: 'Match over' }).waitFor();
+    m = await modal(page);
+    check(m.body.includes('You conceded'), 'the match-over sheet says so');
     const { match } = await api(`/match/${matchId}`, { token: b.token });
-    check(match.status === 'completed' && match.ended, 'the server has the match completed');
-    check(Number(match.players[match.winner]) === Number(b.user.id), 'the opponent is the winner');
-    check(match.concededBy === match.players.findIndex((p) => Number(p) === Number(a.user.id)), 'recorded as conceded by the quitter');
-
-    // The opponent's screen: the result, and the way back to the lobby.
-    const ctxB = await browser.newContext(LANDSCAPE);
-    const pageB = await ctxB.newPage();
-    await pageB.goto(`${GAME}/?mode=pvp&match=${matchId}&dev=${slots[1]}`);
-    await pageB.locator('#overlay-title').filter({ hasText: /won|Match over/ }).waitFor();
-    m = await modal(pageB);
-    check(m.body.includes('Your opponent conceded'), 'the opponent sees that you conceded');
-    check(m.buttons[0] === 'Back to lobby', `the opponent's first choice is Back to lobby (${m.buttons.join(' | ')})`);
-    await pageB.screenshot({ path: shot('opponent-pvp') });
-    await click(pageB, 'Back to lobby');
-    await pageB.locator('#lobby').waitFor({ state: 'visible' });
-    check(true, 'the opponent gets back to the lobby');
-    await ctxA.close();
-    await ctxB.close();
+    check(match.status === 'completed' && Number(match.players[match.winner]) === Number(b.user.id), 'the opponent wins');
+    await page.screenshot({ path: shot('surrendered') });
+    await ctx.close();
   }
 } finally {
   await browser.close();

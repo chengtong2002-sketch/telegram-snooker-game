@@ -133,6 +133,7 @@ test('two idle players: the timeout loop ends, abandoned, with no winner and not
 
   const seen = await call(`/api/match/${matchId}`, { token: players[0].token });
   assert.equal(seen.body.match.abandoned, 'idle');
+  assert.equal(seen.body.match.idleForfeitTimeouts, IDLE_FORFEIT_TIMEOUTS, 'the Quit dialog reads the rule from here');
   assert.equal(seen.body.match.ended, true);
   assert.equal(seen.body.match.winner, null);
   const shot = await call(`/api/match/${matchId}/shot`, {

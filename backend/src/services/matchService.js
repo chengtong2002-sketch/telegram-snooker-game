@@ -167,6 +167,8 @@ export function publicMatch(row, state) {
     turnUserId: row.turn_user_id,
     shotDeadline: row.shot_deadline,
     shotClockSeconds: config.shotClockSeconds,
+    // For the Quit dialog: how many missed shots before an absent player forfeits.
+    idleForfeitTimeouts: IDLE_FORFEIT_TIMEOUTS,
     // The client counts down relative to this, not its own clock (see localDeadline in shared/sim).
     serverNow: Date.now(),
   };

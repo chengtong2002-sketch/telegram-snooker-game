@@ -529,24 +529,27 @@ export class Game {
 
   /**
    * Ask before conceding. Used by the mid-frame button, the checkpoint and the
-   * pause menu. The server keeps every break already made, so say so.
+   * pause menu's Surrender. The server keeps every break already made, so say so.
    *
    * @param {'unrecoverable'|'checkpoint'|'menu'} via
+   * @param {{onCancel?: () => void}} [opts]  where Cancel goes (the pause menu, for Surrender)
    */
-  confirmConcede(via) {
+  confirmConcede(via, { onCancel } = {}) {
     if (this.mode !== 'pvp' || !this.state || this.state.ended) return;
-    const back = () => (this.phase === 'checkpoint' ? this.#showCheckpoint() : this.hud.closeModal());
+    const back = onCancel
+      ?? (() => (this.phase === 'checkpoint' ? this.#showCheckpoint() : this.hud.closeModal()));
+    const surrender = via === 'menu';
     const [a, b] = this.state.framesWon;
     this.hud.modal({
-      title: 'Concede this match?',
-      body: `<p>Your opponent will be recorded as the winner.</p>
+      title: surrender ? 'Surrender this match?' : 'Concede this match?',
+      body: `<p>${surrender ? 'Your opponent wins.' : 'Your opponent will be recorded as the winner.'}</p>
         <div class="row"><span>Match ends at</span><b>${a}–${b}</b></div>
-        <p class="note"><b>Your breaks still count.</b> Conceding only decides who wins the match.
+        <p class="note"><b>Your breaks still count.</b> ${surrender ? 'Surrendering' : 'Conceding'} only decides who wins the match.
         It doesn't cancel any break you've already made — if yours is the highest break of this
         match, it stays reward-eligible.</p>`,
       actions: [
         {
-          label: 'Confirm',
+          label: surrender ? 'Surrender' : 'Confirm',
           kind: 'danger',
           onClick: async () => {
             try {
@@ -554,7 +557,7 @@ export class Game {
               this.#adoptServerMatch(match);
               this.#showMatchOver();
             } catch (err) {
-              this.hud.toast(err.message, 'foul', 4000);
+              this.hud.toast(err.offline ? 'No connection. You are still in the match.' : err.message, 'foul', 4000);
             }
           },
         },
@@ -564,41 +567,31 @@ export class Game {
   }
 
   /**
-   * The pause menu's Quit match, in PvP: the same concede as every other path
-   * (the server records the opponent as the winner and the bot tells both
-   * players), then back to the lobby rather than the match-over sheet.
+   * The pause menu's Quit. Leaving concedes nothing: in PvP the match carries on
+   * on the server under the idle rules, and the lobby offers Rejoin while it
+   * lasts. Practice lives on this device only, so quitting it records nothing.
+   * A match that is already over just leaves.
    *
    * @param {{onQuit: () => void, onCancel: () => void}} handlers
    */
   confirmQuit({ onQuit, onCancel }) {
-    if (this.mode !== 'pvp' || !this.state || this.state.ended) {
+    if (!this.state || this.state.ended) {
       onQuit();
       return;
     }
-    const [a, b] = this.state.framesWon;
+    const pvp = this.mode === 'pvp';
+    // The server's rule, sent with the match, so the warning cannot drift from it.
+    const misses = this.serverMatch?.idleForfeitTimeouts ?? 3;
     this.hud.modal({
-      title: 'Concede this match?',
-      body: `<p>Your opponent wins, and you go back to the lobby.</p>
-        <div class="row"><span>Match ends at</span><b>${a}–${b}</b></div>
-        <p class="note"><b>Your breaks still count.</b> Quitting only decides who wins the match.
-        It doesn't cancel any break you've already made — if yours is the highest break of this
-        match, it stays reward-eligible.</p>`,
+      title: pvp ? 'Are you sure you want to quit?' : 'Quit practice?',
+      body: pvp
+        ? `<p>The match continues without you — if you don't return, you'll forfeit after
+           ${misses} missed shots (~${Math.round((misses * SHOT_CLOCK_MS) / 1000)}s).</p>
+           <p class="note">Rejoin from the lobby any time before then and carry on where you left off.</p>`
+        : '<p>This frame is not saved. Practice is never recorded or reward-eligible.</p>',
       actions: [
-        {
-          label: 'Concede and quit',
-          kind: 'danger',
-          onClick: async () => {
-            try {
-              await api.concedeMatch(this.matchId, 'quit');
-              onQuit();
-              this.hud.toast('You conceded. Your opponent wins the match.', '', 3500);
-            } catch (err) {
-              // Not conceded, so stay: leaving would look like a quit that never happened.
-              this.hud.toast(err.offline ? 'No connection. You are still in the match.' : err.message, 'foul', 4000);
-            }
-          },
-        },
-        { label: 'Cancel', onClick: () => onCancel() },
+        { label: 'Quit', onClick: () => onQuit() },
+        { label: pvp ? 'Stay in the match' : 'Keep playing', kind: 'primary', onClick: () => onCancel() },
       ],
     });
   }

@@ -72,31 +72,29 @@ function pauseMenu() {
         label: 'Wallet & rewards',
         onClick: () => openWalletScreen(hud, { onClose: () => pauseMenu() }),
       },
+      { label: 'Close game', onClick: () => closeApp() },
+      // Surrender ends the match now (the opponent wins); Quit only leaves the
+      // table. Both sit at the bottom, away from Resume, and both ask first.
       ...(game && game.mode === 'pvp' && !game.state?.ended
         ? [{
-          label: 'Concede',
+          label: 'Surrender',
           kind: 'danger',
-          // Same confirmation as the in-game paths, including the reassurance
-          // that breaks already made still count.
-          onClick: () => game.confirmConcede('menu'),
+          // The same concede as the in-game paths, breaks-still-count note included.
+          onClick: () => game.confirmConcede('menu', { onCancel: () => pauseMenu() }),
         }]
         : []),
-      { label: 'Close game', onClick: () => closeApp() },
-      // Last, and set apart from Resume (the .quit style), so it is never the
-      // button a thumb lands on by accident.
-      { label: 'Quit match', kind: 'quit', onClick: () => quitMatch() },
+      { label: 'Quit', onClick: () => quitMatch() },
     ],
   });
 }
 
 /**
- * Leave the table for the lobby. Practice just goes: it is on this device only
- * and nothing is recorded. A live PvP match is conceded first, behind the same
- * confirmation as every other concede; the server records the opponent as the
- * winner and the bot tells both players. A match already over just leaves.
+ * Leave the table for the lobby, after asking. Nothing is conceded: a live PvP
+ * match keeps running on the server under the idle rules, and the lobby offers
+ * Rejoin until it ends. Practice records nothing.
  */
 function quitMatch() {
-  if (!game || game.mode === 'practice' || game.state?.ended) {
+  if (!game) {
     leaveTableForLobby();
     return;
   }
@@ -217,6 +215,7 @@ async function boot() {
  */
 async function openLobby(me) {
   document.documentElement.dataset.screen = 'lobby';
+  stopRejoinWatch();
   await showLobby({
     hud,
     me,
@@ -235,10 +234,66 @@ async function openLobby(me) {
       onClose: () => refreshLobbyStats(),
     }),
   });
+  offerRejoin(me);
+}
+
+/* ---------- Rejoin: a PvP match the player left is still running ---------- */
+
+let rejoinTimer = null;
+function stopRejoinWatch() {
+  clearInterval(rejoinTimer);
+  rejoinTimer = null;
+}
+
+const lobbyShowing = () => !document.getElementById('lobby').hidden;
+
+/** The player's live match, or null (none, offline, or the server is unreachable). */
+async function liveMatch() {
+  try {
+    return (await api.activeMatches()).matches?.find((m) => !m.ended) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * While the player has a live match, the main button is Rejoin instead of
+ * PLAY (the server would refuse a second match anyway). It is re-checked every
+ * 10 s, so once the match ends — a forfeit on the idle rules, the opponent
+ * surrendering — PLAY comes back without a reload.
+ */
+async function offerRejoin(me) {
+  if (!api.hasSession()) return;
+  const match = await liveMatch();
+  if (!lobbyShowing()) return;
+  if (!match) return;
+  setPlayButton({ label: 'REJOIN MATCH', onClick: () => rejoinMatch(match.id, me) });
+  stopRejoinWatch();
+  rejoinTimer = setInterval(async () => {
+    const still = await liveMatch();
+    if (!lobbyShowing()) return stopRejoinWatch();
+    if (still?.id === match.id) return undefined;
+    stopRejoinWatch();
+    setPlayButton({ label: 'PLAY', onClick: () => findOpponent() });
+    if (!still) hud.toast('Your match has ended', '', 4000);
+    else offerRejoin(me);
+    return undefined;
+  }, 10_000);
+}
+
+/** Back to the table: the match is loaded from the server, exactly as it stands. */
+function rejoinMatch(matchId, me) {
+  stopRejoinWatch();
+  const params = new URLSearchParams(window.location.search);
+  params.set('mode', 'pvp');
+  params.set('match', matchId);
+  window.history.replaceState(null, '', `${window.location.pathname}?${params}`);
+  leaveLobbyForTable({ mode: 'pvp', matchId }, me);
 }
 
 /** Lobby → table: re-arm the landscape guard, then start the mode. */
 function leaveLobbyForTable(params, me) {
+  stopRejoinWatch();
   hideLobby();
   delete document.documentElement.dataset.screen;
   preferLandscape();
