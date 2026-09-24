@@ -6,7 +6,8 @@ import { config } from './config.js';
 import { matchKeyboard, canOpenGame } from './keyboards.js';
 import { isPermanentSendFailure } from './sendFailures.js';
 import {
-  matchedMessage, yourTurnMessage, frameCheckpointMessage, matchOverMessage, walletChangedMessage,
+  matchedMessage, yourTurnMessage, frameCheckpointMessage, matchOverMessage, matchAbandonedMessage,
+  walletChangedMessage,
 } from './messages.js';
 
 /**
@@ -55,6 +56,8 @@ export function startNotificationServer(bot) {
         );
       } else if (event.type === 'match-over') {
         await send(matchOverMessage(event));
+      } else if (event.type === 'match-abandoned') {
+        await send(matchAbandonedMessage(event));
       } else if (event.type === 'wallet-changed') {
         await send(walletChangedMessage(event, { supportHandle: config.supportHandle }));
       } else {

@@ -7,7 +7,7 @@ import {
 import { config } from '../config.js';
 import { logger } from '../logger.js';
 import {
-  notifyYourTurn, notifyMatchOver, notifyFrameCheckpoint,
+  notifyYourTurn, notifyMatchOver, notifyFrameCheckpoint, notifyMatchAbandoned,
 } from './notify.js';
 import { recordEligibleBreak, DAILY_ELIGIBLE_MATCH_CAP, DAILY_PAIR_MATCH_CAP } from './rewards.js';
 import { equippedIds } from './equipped.js';
@@ -36,6 +36,95 @@ function openCheckpointIfDue(state, previousFrameNumber) {
     deadline: new Date(Date.now() + CHECKPOINT_MS).toISOString(),
   };
   return true;
+}
+
+/** Shot clocks a player can let run out in a row before they forfeit the match. */
+export const IDLE_FORFEIT_TIMEOUTS = 3;
+
+/**
+ * Timeouts in a row, across both players, that mean nobody is playing. A
+ * timeout always passes the turn, so a run alternates seats: 4 is two each.
+ * Left alone, two idle players would trade 4-point fouls forever.
+ */
+export const IDLE_ABANDON_RUN = 4;
+
+/**
+ * Count one turn towards the idle limits and say whether it ends the match.
+ * `state.idle.seats` is each seat's timeouts in a row (their own real shot
+ * resets it; the opponent's does not), `run` the match's timeouts in a row.
+ * Returns 'abandon', 'forfeit' or null. Abandon is checked first: at 4 in a
+ * row both players have 2, and neither has reached 3.
+ */
+function countTurn(state, striker, timedOut) {
+  const idle = state.idle ?? { seats: [0, 0], run: 0 };
+  if (timedOut) {
+    idle.seats[striker] += 1;
+    idle.run += 1;
+  } else {
+    idle.seats[striker] = 0;
+    idle.run = 0;
+  }
+  state.idle = idle;
+  if (!timedOut || state.ended) return null;
+  if (idle.run >= IDLE_ABANDON_RUN) return 'abandon';
+  if (idle.seats[striker] >= IDLE_FORFEIT_TIMEOUTS) return 'forfeit';
+  return null;
+}
+
+/**
+ * End the match for idleness. A forfeit is a concede by the idle player, so it
+ * goes through the same path: opponent wins, breaks already made are kept and
+ * meet the normal reward limits (a timeout itself scores no break). An
+ * abandoned match has no winner and never pays anything.
+ */
+function endForIdle(state, striker, verdict) {
+  if (verdict === 'forfeit') return { ...concedeMatch(state, striker), forfeit: 'idle' };
+  const next = structuredClone(state);
+  next.ended = true;
+  next.winner = null;
+  next.abandoned = 'idle';
+  delete next.checkpoint;
+  return next;
+}
+
+/** persist() options for a match that may have just been abandoned. */
+const abandonedWrite = (state) => (state.abandoned
+  ? { status: 'abandoned', extra: { ineligible_reason: 'abandoned-idle', crypto_eligible: false } }
+  : {});
+
+/** Tell both players, once, that the match was called off. */
+async function announceAbandoned(row, state) {
+  logger.info({ matchId: row.id, scores: state.frame.scores }, 'pvp match abandoned: both players idle');
+  for (const userId of state.players) {
+    await notifyMatchAbandoned(row, userId, { framesWon: state.framesWon, timeouts: IDLE_ABANDON_RUN });
+  }
+}
+
+/**
+ * Send "your shot" to whoever's turn it is — unless they have not opened the
+ * app since the last one. Claiming the flag is one conditional update, so two
+ * writers racing for the same turn cannot both send.
+ */
+async function noticeYourTurn(row, state, extra) {
+  const seat = state.frame.turn;
+  const column = seat === 0 ? 'turn_notice_a' : 'turn_notice_b';
+  const claimed = await getDb()('matches').where({ id: row.id, [column]: false }).update({ [column]: true });
+  if (!claimed) {
+    logger.info({ matchId: row.id, seat }, 'your-turn notify held: not opened since the last one');
+    return;
+  }
+  await notifyYourTurn(row, state.players[seat], { opponentId: state.players[1 - seat], ...extra });
+}
+
+/**
+ * The player has the app open: the next "your shot" may be sent again. With a
+ * match id, that match only; without, every active match of theirs (sign-in).
+ */
+export async function markTurnNoticesSeen(userId, matchId = null) {
+  const knex = getDb();
+  const scope = (q) => (matchId ? q.where({ id: matchId }) : q.where({ status: 'active' }));
+  await scope(knex('matches')).where({ player_a: userId, turn_notice_a: true }).update({ turn_notice_a: false });
+  await scope(knex('matches')).where({ player_b: userId, turn_notice_b: true }).update({ turn_notice_b: false });
 }
 
 const displayName = (u) => (u?.username ? `@${u.username}` : (u?.first_name ?? 'Player'));
@@ -72,6 +161,8 @@ export function publicMatch(row, state) {
     ended: state.ended,
     winner: state.winner,
     concededBy: state.concededBy ?? null,
+    forfeit: state.forfeit ?? null,
+    abandoned: state.abandoned ?? null,
     checkpoint: state.checkpoint ?? null,
     turnUserId: row.turn_user_id,
     shotDeadline: row.shot_deadline,
@@ -150,7 +241,7 @@ async function persist(row, state, { status, extra = {}, trx } = {}) {
     ...extra,
   };
   if (state.ended) {
-    patch.winner_id = state.players[state.winner];
+    patch.winner_id = state.winner == null ? null : state.players[state.winner]; // abandoned: nobody
     patch.completed_at = knex.fn.now();
   }
   const changed = await db('matches').where({ id: row.id, version: row.version }).update(patch);
@@ -194,6 +285,7 @@ async function onMatchComplete(row, state) {
         : null,
       conceded: state.concededBy != null,
       youConceded: state.concededBy != null && Number(state.players[state.concededBy]) === Number(userId),
+      forfeit: state.forfeit ?? null, // 'idle': the concede was the shot clock running out
     });
   }
 }
@@ -216,8 +308,7 @@ async function startNextFrame(row, state) {
   delete state.checkpoint;
   const updatedRow = await persist(row, state);
   if (!updatedRow) return null;
-  await notifyYourTurn(updatedRow, state.players[state.frame.turn], {
-    opponentId: state.players[1 - state.frame.turn],
+  await noticeYourTurn(updatedRow, state, {
     scores: state.frame.scores,
     newFrame: state.frame.frame,
     secondsToShoot: config.shotClockSeconds,
@@ -288,6 +379,7 @@ export async function applyShot({ matchId, userId, resultId, shot }) {
     return { status: 'error', code: 409, reason: 'waiting for the between-frame decision' };
   }
   if (idx !== state.frame.turn) return { status: 'error', code: 409, reason: 'not your turn' };
+  await markTurnNoticesSeen(userId, row.id);
 
   // Must be actual finite numbers. Number() would turn null into 0, which is a
   // perfectly legal angle — a malformed shot would silently become a real one.
@@ -326,6 +418,9 @@ export async function applyShot({ matchId, userId, resultId, shot }) {
   const frameNumber = state.frame.frame;
   const shotNumber = state.frame.shotNumber + 1;
   state = advanceMatch(state, nextFrame);
+  // A shot sent after the clock ran out is scored as a timeout, and counts as one.
+  const idleVerdict = countTurn(state, idx, !!overdue);
+  if (idleVerdict) state = endForIdle(state, idx, idleVerdict);
   const checkpointOpened = openCheckpointIfDue(state, frameNumber);
 
   // The shot row and the match update commit together or not at all, so a
@@ -344,7 +439,7 @@ export async function applyShot({ matchId, userId, resultId, shot }) {
         foul: outcome.foul,
         points: outcome.pointsScored,
       });
-      const written = await persist(row, state, { trx });
+      const written = await persist(row, state, { trx, ...abandonedWrite(state) });
       if (!written) throw new StaleMatchError();
       return written;
     });
@@ -357,15 +452,16 @@ export async function applyShot({ matchId, userId, resultId, shot }) {
     throw err;
   }
 
-  if (state.ended) {
+  if (state.abandoned) {
+    await announceAbandoned(updatedRow, state);
+  } else if (state.ended) {
     await onMatchComplete(updatedRow, state);
   } else if (checkpointOpened) {
     await announceCheckpoint(updatedRow, state);
   } else if (state.frame.turn !== idx) {
     // Turn passed — or a frame ended level (1-1) and the other player breaks
     // the decider, which outcome.turnPassed alone does not cover.
-    await notifyYourTurn(updatedRow, state.players[state.frame.turn], {
-      opponentId: state.players[1 - state.frame.turn],
+    await noticeYourTurn(updatedRow, state, {
       scores: state.frame.scores,
       lastShot: {
         foul: outcome.foul,
@@ -427,6 +523,8 @@ export async function continueMatch({ matchId, userId }) {
   const idx = participantIndex(state, userId);
   if (idx === -1) return { status: 'error', code: 403, reason: 'not a participant' };
 
+  await markTurnNoticesSeen(userId, row.id);
+
   if (!state.checkpoint || idx !== state.checkpoint.trailing) {
     return { status: 'ok', started: false, match: await publicMatchForClient(row, state) };
   }
@@ -469,24 +567,29 @@ export async function sweepShotClocks() {
         continue;
       }
       const frameNumber = state.frame.frame;
+      const striker = state.frame.turn;
       const { state: nextFrame } = resolveTimeout(state.frame);
       state = advanceMatch(state, nextFrame);
+      const idleVerdict = countTurn(state, striker, true);
+      if (idleVerdict) state = endForIdle(state, striker, idleVerdict);
       const checkpointOpened = openCheckpointIfDue(state, frameNumber);
-      const updatedRow = await persist(row, state);
+      const updatedRow = await persist(row, state, abandonedWrite(state));
       if (!updatedRow) continue; // a shot or concede landed while we swept
-      if (state.ended) {
+      logger.info({ matchId: row.id, idle: state.idle }, 'shot clock expired, turn passed');
+      if (state.abandoned) {
+        await announceAbandoned(updatedRow, state);
+      } else if (state.ended) {
+        if (state.forfeit) logger.info({ matchId: row.id, seat: striker }, 'pvp match forfeited: idle');
         await onMatchComplete(updatedRow, state);
       } else if (checkpointOpened) {
         await announceCheckpoint(updatedRow, state);
       } else {
-        await notifyYourTurn(updatedRow, state.players[state.frame.turn], {
-          opponentId: state.players[1 - state.frame.turn],
+        await noticeYourTurn(updatedRow, state, {
           scores: state.frame.scores,
           lastShot: { foul: true, foulReasons: ['shot-clock-expired'], penalty: 4 },
           secondsToShoot: config.shotClockSeconds,
         });
       }
-      logger.info({ matchId: row.id }, 'shot clock expired, turn passed');
     } catch (err) {
       logger.error({ err: err.message, matchId: row.id }, 'shot clock sweep failed');
     }

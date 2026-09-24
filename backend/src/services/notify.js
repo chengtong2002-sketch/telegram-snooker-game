@@ -31,6 +31,10 @@ export const notifyYourTurn = (match, userId, extra = {}) =>
 export const notifyMatchOver = (match, userId, extra = {}) =>
   notifyBot({ type: 'match-over', matchId: match.id, userId, ...extra });
 
+/** Both players let the shot clock run out in turn: no winner, no reward. */
+export const notifyMatchAbandoned = (match, userId, extra = {}) =>
+  notifyBot({ type: 'match-abandoned', matchId: match.id, userId, ...extra });
+
 export const notifyFrameCheckpoint = (match, userId, extra = {}) =>
   notifyBot({ type: 'frame-checkpoint', matchId: match.id, userId, ...extra });
 

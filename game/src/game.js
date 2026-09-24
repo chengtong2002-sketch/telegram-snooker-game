@@ -116,6 +116,8 @@ export class Game {
       ended: match.ended,
       winner: match.winner,
       concededBy: match.concededBy ?? null,
+      forfeit: match.forfeit ?? null,
+      abandoned: match.abandoned ?? null,
       checkpoint: match.checkpoint ?? null,
     };
     // Server time at the moment this response arrived: deadlines are converted
@@ -615,17 +617,21 @@ export class Game {
     const best = Math.min(MAX_BREAK, matchHighBreak(this.state));
     const myBest = Math.min(MAX_BREAK, this.state.highBreaks[this.myIndex]);
     const conceded = this.state.concededBy != null;
+    const iConceded = this.state.concededBy === this.myIndex;
+    let result = '';
+    if (this.state.abandoned) result = 'Abandoned — nobody was shooting';
+    else if (conceded && this.state.forfeit === 'idle') result = iConceded ? 'You timed out 3 times' : 'Your opponent timed out 3 times';
+    else if (conceded) result = iConceded ? 'You conceded' : 'Your opponent conceded';
 
     const rows = [
-      conceded
-        ? `<div class="row"><span>Result</span><b>${this.state.concededBy === this.myIndex ? 'You conceded' : 'Your opponent conceded'}</b></div>`
-        : '',
+      result ? `<div class="row"><span>Result</span><b>${result}</b></div>` : '',
       `<div class="row"><span>Frames</span><b>${this.state.framesWon[0]}–${this.state.framesWon[1]}</b></div>`,
       `<div class="row"><span>Your highest break</span><b>${myBest}</b></div>`,
       `<div class="row"><span>Match highest break</span><b>${best}</b></div>`,
     ];
 
-    const note = this.mode === 'pvp'
+    const abandonedNote = '<p class="note">The shot clock ran out 4 times in a row, so the match was called off. Nothing from it counts toward rewards.</p>';
+    const note = this.state.abandoned ? abandonedNote : this.mode === 'pvp'
       ? `<p class="note">Only the single highest break of a PvP match counts toward rewards,
          and only up to the ${MAX_BREAK} maximum. Your share of the period's pool depends on
          how many eligible points everyone earns before it closes.</p>`
@@ -640,7 +646,7 @@ export class Game {
     }
 
     this.hud.modal({
-      title: won ? '🏆 You won the match' : 'Match over',
+      title: won ? '🏆 You won the match' : (this.state.abandoned ? 'Match abandoned' : 'Match over'),
       body: rows.join('') + note,
       actions: this.mode === 'practice'
         ? [{

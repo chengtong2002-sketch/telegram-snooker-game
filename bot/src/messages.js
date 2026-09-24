@@ -197,7 +197,11 @@ export function frameCheckpointMessage(event) {
 /** "match-over". */
 export function matchOverMessage(event) {
   let headline = event.won ? '🏆 <b>You won the match.</b>' : 'Match over — your opponent took it.';
-  if (event.conceded) {
+  if (event.conceded && event.forfeit === 'idle') {
+    headline = event.youConceded
+      ? 'You forfeited the match — your shot clock ran out 3 times in a row.'
+      : '🏆 <b>You won — your opponent stopped playing</b> (3 shot clocks in a row).';
+  } else if (event.conceded) {
     headline = event.youConceded ? 'You conceded the match.' : '🏆 <b>You won — your opponent conceded.</b>';
   }
   const lines = [headline, html`Frames ${event.framesWon?.[0] ?? 0}–${event.framesWon?.[1] ?? 0}.`];
@@ -219,6 +223,15 @@ export function matchOverMessage(event) {
     );
   }
   return message(lines);
+}
+
+/** "match-abandoned": both players let the shot clock run out in turn. */
+export function matchAbandonedMessage(event) {
+  return message([
+    'Match abandoned — neither player took a shot.',
+    html`The shot clock ran out ${event.timeouts ?? 4} times in a row, so nobody wins and nothing from this match counts toward rewards.`,
+    '/play to start a new one.',
+  ]);
 }
 
 /**

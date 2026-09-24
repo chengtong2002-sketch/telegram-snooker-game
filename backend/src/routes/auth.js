@@ -3,7 +3,7 @@ import { verifyInitData, issueSession, requireAuth } from '../auth.js';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
 import { activeWallet } from '@snooker/db';
-import { activeMatchesFor } from '../services/matchService.js';
+import { activeMatchesFor, markTurnNoticesSeen } from '../services/matchService.js';
 import { equippedIds } from '../services/equipped.js';
 
 const router = Router();
@@ -14,6 +14,7 @@ router.post('/telegram', async (req, res) => {
 
   if (!initData && config.allowDevAuth && req.body?.devUser?.id) {
     const { token, user } = await issueSession(req.body.devUser);
+    await markTurnNoticesSeen(user.id);
     return res.json({ token, user: { ...user, equipped: equippedIds(user) }, dev: true });
   }
 
@@ -30,6 +31,8 @@ router.post('/telegram', async (req, res) => {
   }
 
   const { token, user } = await issueSession(check.user);
+  // Opening the Mini App counts as having seen any "your shot" message.
+  await markTurnNoticesSeen(user.id);
   return res.json({
     token,
     user: {

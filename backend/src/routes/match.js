@@ -3,6 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { requireAuth } from '../auth.js';
 import {
   loadMatch, applyShot, concede, continueMatch, publicMatchForClient, activeMatchesFor,
+  markTurnNoticesSeen,
 } from '../services/matchService.js';
 import { joinQueue, leaveQueue, queueStatus } from '../services/matchmaking.js';
 
@@ -36,6 +37,8 @@ router.get('/:id', async (req, res) => {
   if (!state.players.some((p) => Number(p) === Number(req.user.id))) {
     return res.status(403).json({ error: 'not a participant' });
   }
+  // The table polls this while it is open: the player can see whose turn it is.
+  await markTurnNoticesSeen(req.user.id, row.id);
   return res.json({ match: await publicMatchForClient(row, state) });
 });
 
