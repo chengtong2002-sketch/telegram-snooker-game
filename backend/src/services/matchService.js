@@ -385,7 +385,9 @@ export async function applyShot({ matchId, userId, resultId, shot }) {
   };
 }
 
-const CONCEDE_VIA = new Set(['unrecoverable', 'checkpoint', 'menu']);
+// 'quit' is the pause menu's Quit match: the same concede, then the client
+// goes back to the lobby.
+const CONCEDE_VIA = new Set(['unrecoverable', 'checkpoint', 'menu', 'quit']);
 
 /**
  * Concede the match. It ends immediately at the current frame score, with the

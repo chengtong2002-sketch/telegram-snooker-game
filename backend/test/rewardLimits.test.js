@@ -192,6 +192,75 @@ test('end to end: a capped player plays a match to the end, and the bot is told 
   assert.equal(toOpponent.rewardLimit, null, 'only the player whose break was withheld is told');
 });
 
+test('quitting over and over cannot farm rewards past the daily limits', async () => {
+  // Two players collude: one makes a break, the other quits at once (the pause
+  // menu's Quit match is a concede with via "quit"). Each quit ends a real
+  // match through the normal path, so the normal limits apply to it.
+  const call = async (p, { method = 'GET', body, token } = {}) => {
+    const res = await fetch(`${base}${p}`, {
+      method,
+      headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    return { status: res.status, body: await res.json() };
+  };
+  const login = async (tg) => (await call('/api/auth/telegram', { method: 'POST', body: { devUser: { id: tg, first_name: `Q${tg}` } } })).body;
+
+  /** Pair the two, give `farmer` a 25 in the open frame, and have `quitter` quit. */
+  const quitAgainst = async (farmer, quitter) => {
+    await call('/api/match/queue', { method: 'POST', token: farmer.token });
+    const { body } = await call('/api/match/queue', { method: 'POST', token: quitter.token });
+    assert.ok(body.matchId, 'paired');
+    const row = await knex('matches').where({ id: body.matchId }).first();
+    const state = JSON.parse(row.state);
+    const farmerSeat = state.players.findIndex((p) => Number(p) === Number(farmer.user.id));
+    state.frame.highBreaks = farmerSeat === 0 ? [25, 0] : [0, 25];
+    await knex('matches').where({ id: body.matchId }).update({ state: JSON.stringify(state) });
+
+    botEvents.length = 0;
+    const res = await call(`/api/match/${body.matchId}/concede`, { method: 'POST', token: quitter.token, body: { via: 'quit' } });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.match.ended, true);
+    assert.equal(Number(res.body.match.players[res.body.match.winner]), Number(farmer.user.id), 'the opponent of whoever quit wins');
+    await new Promise((r) => setTimeout(r, 50));
+    return { matchId: body.matchId, events: [...botEvents] };
+  };
+
+  const farmer = await login(7101);
+  const partner = await login(7102);
+
+  // The same pair: 3 count, the 4th is refused on the pair limit.
+  for (let i = 1; i <= 4; i += 1) {
+    const { matchId, events } = await quitAgainst(farmer, partner);
+    const done = await knex('matches').where({ id: matchId }).first();
+    const earned = await knex('eligible_breaks').where({ match_id: matchId }).first();
+    if (i <= DAILY_PAIR_MATCH_CAP) {
+      assert.equal(earned?.break_value, 25, `quit ${i} counts like any finished match`);
+    } else {
+      assert.equal(earned, undefined, `quit ${i} earns nothing`);
+      assert.equal(done.ineligible_reason, 'daily-pair-cap');
+    }
+    // Both players are messaged, and the one who did not quit hears that they won.
+    const toFarmer = events.find((e) => e.type === 'match-over' && Number(e.userId) === Number(farmer.user.id));
+    const toPartner = events.find((e) => e.type === 'match-over' && Number(e.userId) === Number(partner.user.id));
+    assert.equal(toFarmer.won, true);
+    assert.equal(toFarmer.conceded, true);
+    assert.equal(toFarmer.youConceded, false);
+    assert.equal(toPartner.youConceded, true);
+  }
+
+  // New partners each time: 15 a day in all, then nothing.
+  for (let i = DAILY_PAIR_MATCH_CAP + 1; i <= DAILY_ELIGIBLE_MATCH_CAP + 1; i += 1) {
+    const { matchId } = await quitAgainst(farmer, await login(7200 + i));
+    const earned = await knex('eligible_breaks').where({ match_id: matchId }).first();
+    if (i <= DAILY_ELIGIBLE_MATCH_CAP) assert.equal(earned?.break_value, 25, `match ${i} of the day counts`);
+    else assert.equal((await knex('matches').where({ id: matchId }).first()).ineligible_reason, 'daily-match-cap');
+  }
+
+  const total = await knex('eligible_breaks').where({ user_id: farmer.user.id }).sum({ points: 'break_value' }).first();
+  assert.equal(Number(total.points), DAILY_ELIGIBLE_MATCH_CAP * 25, 'never more than 15 eligible matches in the day');
+});
+
 /** A closed period in which `user` holds `points` eligible points. */
 async function closedPeriodWithPoints(user, points) {
   const starts = new Date(Date.now() - 3 * 86_400_000 - Math.floor(Math.random() * 1e6));

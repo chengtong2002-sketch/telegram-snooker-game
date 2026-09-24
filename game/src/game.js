@@ -38,6 +38,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export class Game {
   constructor({
     mode, matchId, me, hud, renderer, controls, sound = null, skins = null, mySkins = () => ({}),
+    onExit = null,
   }) {
     this.mode = mode;             // 'practice' | 'pvp'
     this.matchId = matchId;
@@ -48,6 +49,7 @@ export class Game {
     this.sound = sound;
     this.skins = skins;           // createSkinSwitcher(renderer), or null
     this.mySkins = mySkins;       // the player's own equipped ids
+    this.onExit = onExit;         // back to the lobby
 
     this.myIndex = 0;
     this.state = null;            // sim match state
@@ -559,6 +561,46 @@ export class Game {
     });
   }
 
+  /**
+   * The pause menu's Quit match, in PvP: the same concede as every other path
+   * (the server records the opponent as the winner and the bot tells both
+   * players), then back to the lobby rather than the match-over sheet.
+   *
+   * @param {{onQuit: () => void, onCancel: () => void}} handlers
+   */
+  confirmQuit({ onQuit, onCancel }) {
+    if (this.mode !== 'pvp' || !this.state || this.state.ended) {
+      onQuit();
+      return;
+    }
+    const [a, b] = this.state.framesWon;
+    this.hud.modal({
+      title: 'Concede this match?',
+      body: `<p>Your opponent wins, and you go back to the lobby.</p>
+        <div class="row"><span>Match ends at</span><b>${a}–${b}</b></div>
+        <p class="note"><b>Your breaks still count.</b> Quitting only decides who wins the match.
+        It doesn't cancel any break you've already made — if yours is the highest break of this
+        match, it stays reward-eligible.</p>`,
+      actions: [
+        {
+          label: 'Concede and quit',
+          kind: 'danger',
+          onClick: async () => {
+            try {
+              await api.concedeMatch(this.matchId, 'quit');
+              onQuit();
+              this.hud.toast('You conceded. Your opponent wins the match.', '', 3500);
+            } catch (err) {
+              // Not conceded, so stay: leaving would look like a quit that never happened.
+              this.hud.toast(err.offline ? 'No connection. You are still in the match.' : err.message, 'foul', 4000);
+            }
+          },
+        },
+        { label: 'Cancel', onClick: () => onCancel() },
+      ],
+    });
+  }
+
   // --- end of match --------------------------------------------------------
 
   #showMatchOver() {
@@ -600,20 +642,22 @@ export class Game {
     this.hud.modal({
       title: won ? '🏆 You won the match' : 'Match over',
       body: rows.join('') + note,
-      actions: [
-        {
-          label: this.mode === 'practice' ? 'Play again' : 'Back to the bot',
+      actions: this.mode === 'practice'
+        ? [{
+          label: 'Play again',
           kind: 'primary',
-          onClick: () => {
-            if (this.mode === 'practice') {
-              this.hud.closeModal();
-              this.#startPractice();
-            } else {
-              window.Telegram?.WebApp?.close?.();
-            }
+          onClick: () => { this.hud.closeModal(); this.#startPractice(); },
+        }]
+        : [
+          // Both players land here when a match ends, including the one whose
+          // opponent just quit: the lobby is one tap away, the bot one more.
+          ...(this.onExit ? [{ label: 'Back to lobby', kind: 'primary', onClick: () => this.onExit() }] : []),
+          {
+            label: 'Back to the bot',
+            kind: this.onExit ? '' : 'primary',
+            onClick: () => window.Telegram?.WebApp?.close?.(),
           },
-        },
-      ],
+        ],
     });
   }
 

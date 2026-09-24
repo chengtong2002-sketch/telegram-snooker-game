@@ -37,6 +37,7 @@ skins.show(mySkinIds());
 const sound = installTableSound({ isEnabled: soundEnabled });
 
 let game = null;
+let controls = null;
 
 const tableWrap = document.getElementById('table-wrap');
 
@@ -81,8 +82,25 @@ function pauseMenu() {
         }]
         : []),
       { label: 'Close game', onClick: () => closeApp() },
+      // Last, and set apart from Resume (the .quit style), so it is never the
+      // button a thumb lands on by accident.
+      { label: 'Quit match', kind: 'quit', onClick: () => quitMatch() },
     ],
   });
+}
+
+/**
+ * Leave the table for the lobby. Practice just goes: it is on this device only
+ * and nothing is recorded. A live PvP match is conceded first, behind the same
+ * confirmation as every other concede; the server records the opponent as the
+ * winner and the bot tells both players. A match already over just leaves.
+ */
+function quitMatch() {
+  if (!game || game.mode === 'practice' || game.state?.ended) {
+    leaveTableForLobby();
+    return;
+  }
+  game.confirmQuit({ onQuit: () => leaveTableForLobby(), onCancel: () => pauseMenu() });
 }
 
 document.getElementById('pause').addEventListener('click', pauseMenu);
@@ -98,6 +116,28 @@ function initialScreen(params) {
   if (params.screen === 'wallet') return 'wallet';
   if (params.mode) return 'table';
   return 'lobby';
+}
+
+/** Who is playing, for the trip back to the lobby. Set once signed in (or not). */
+let currentMe = null;
+
+/** Table → lobby: stop the game, clear the table's HUD, and show the lobby. */
+function leaveTableForLobby() {
+  game?.destroy();
+  game = null;
+  controls?.setEnabled(false);
+  controls?.setPlacing(false);
+  hud.closeModal();
+  hud.hint('');
+  hud.setClock(null);
+  hud.setConcede(false);
+  // A reload should open the lobby, not the match that was just left.
+  const params = new URLSearchParams(window.location.search);
+  params.delete('mode');
+  params.delete('match');
+  const query = params.toString();
+  window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
+  openLobby(currentMe);
 }
 
 async function boot() {
@@ -152,6 +192,7 @@ async function boot() {
     name: tgUser?.first_name ?? user?.firstName ?? user?.username ?? 'You',
     photo: tgUser?.photo_url ?? null,
   };
+  currentMe = me;
 
   if (screen === 'wallet') {
     // Close hands over to the table rather than exiting the Mini App: players
@@ -253,14 +294,16 @@ async function leaveWalletForTable(me) {
 function startTable(params, me) {
   // PvP needs a match id. Without one there is nothing to load, so fall back to
   // the lobby — it has Play, Practice and the player's stats on one screen.
-  // Checked before Controls is built: a second instance would bind its own
-  // listeners to the same canvas and every drag would be handled twice.
   if (params.mode === 'pvp' && !params.matchId) {
     openLobby(me);
     return;
   }
 
-  const controls = new Controls({
+  // One Controls for the page's whole life: the table can now be left for the
+  // lobby and entered again, and a second instance would bind its own listeners
+  // to the same canvas, so every drag would be handled twice. Its callbacks
+  // always reach whichever game is current.
+  controls ??= new Controls({
     canvas,
     renderer,
     hud,
@@ -311,6 +354,7 @@ async function startGame(mode, matchId, me, controls) {
   game?.destroy();
   game = new Game({
     mode, matchId, me, hud, renderer, controls, sound, skins, mySkins: mySkinIds,
+    onExit: () => leaveTableForLobby(),
   });
   try {
     await game.start();

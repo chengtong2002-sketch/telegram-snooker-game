@@ -13,6 +13,7 @@
     "smoke:concede": "node test/drive-concede.mjs",
     "smoke:offline": "node test/drive-offline.mjs",
     "smoke:store": "node test/drive-store.mjs",
+    "smoke:quit": "node test/drive-quit.mjs",
     "start": "serve -s dist --no-port-switching"
   },
   "dependencies": {
