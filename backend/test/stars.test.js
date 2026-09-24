@@ -40,6 +40,8 @@ process.env.NODE_ENV = 'test';
 process.env.ALLOW_DEV_AUTH = 'true';
 process.env.BOT_TOKEN = '123456:TEST';
 process.env.PAYMENTS_STARS_ENABLED = 'true';
+// Parsed for real below: an allowlist that parses to nothing fails closed and silently.
+process.env.PAYMENTS_STARS_ALLOW_TELEGRAM_IDS = ' 7625262769, 42 ,not-an-id,';
 process.env.TELEGRAM_API_ROOT = `http://127.0.0.1:${stub.address().port}`;
 process.env.BOT_NOTIFY_URL = 'http://127.0.0.1:1/internal/notify';
 
@@ -279,6 +281,10 @@ test('switched off, no invoice is made; unknown packs are refused', async () => 
   } finally {
     config.store.starsEnabled = true;
   }
+});
+
+test('PAYMENTS_STARS_ALLOW_TELEGRAM_IDS parses to the numeric ids, ignoring junk', () => {
+  assert.deepEqual([...config.store.starsAllowTelegramIds].sort(), ['42', '7625262769']);
 });
 
 test('switched off, only allowlisted Telegram ids may buy, and they get the whole flow', async () => {

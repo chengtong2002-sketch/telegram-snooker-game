@@ -85,7 +85,7 @@ export const config = {
     // them (comma-separated): real-money testing on the production bot by the
     // owner. Ignored when PAYMENTS_STARS_ENABLED is on (everyone can then).
     starsAllowTelegramIds: new Set((process.env.PAYMENTS_STARS_ALLOW_TELEGRAM_IDS ?? '')
-      .split(',').map((s) => s.trim()).filter((s) => /^d+$/.test(s))),
+      .split(',').map((s) => s.trim()).filter((s) => /^\d+$/.test(s))),
   },
 
   // Revenue Monster (MYR), sandbox only: the hosts are fixed in
