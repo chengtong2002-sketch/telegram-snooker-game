@@ -52,6 +52,7 @@ new ResizeObserver(fitCanvas).observe(tableWrap);
 
 function pauseMenu() {
   const inPractice = game?.mode === 'practice';
+  const inPvp = game?.mode === 'pvp';
   hud.modal({
     title: 'Paused',
     body: [
@@ -68,11 +69,12 @@ function pauseMenu() {
         label: soundEnabled() ? 'Sound: on' : 'Sound: off',
         onClick: () => { setSetting('sound', !soundEnabled()); pauseMenu(); },
       },
-      {
+      // A live PvP menu keeps to the match: Resume, Sound, Surrender, Quit.
+      ...(inPvp ? [] : [{
         label: 'Wallet & rewards',
         onClick: () => openWalletScreen(hud, { onClose: () => pauseMenu() }),
-      },
-      { label: 'Close game', onClick: () => closeApp() },
+      }]),
+      ...(inPvp ? [] : [{ label: 'Close game', onClick: () => closeApp() }]),
       // Surrender ends the match now (the opponent wins); Quit only leaves the
       // table. Both sit at the bottom, away from Resume, and both ask first.
       ...(game && game.mode === 'pvp' && !game.state?.ended

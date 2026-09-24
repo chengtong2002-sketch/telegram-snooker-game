@@ -96,6 +96,7 @@ try {
     const menu = await modal(page);
     check(menu.buttons[0] === 'Resume', `Resume on top (${menu.buttons.join(' | ')})`);
     check(menu.buttons.includes('Quit') && !menu.buttons.includes('Surrender'), 'practice: Quit, and no Surrender');
+    check(menu.buttons.includes('Wallet & rewards') && menu.buttons.includes('Close game'), 'practice keeps Wallet & rewards and Close game');
 
     await click(page, 'Quit');
     let m = await modal(page);
@@ -135,8 +136,7 @@ try {
     await page.locator('#pause').click();
     const menu = await modal(page);
     check(menu.buttons[0] === 'Resume', `Resume on top (${menu.buttons.join(' | ')})`);
-    check(menu.buttons.indexOf('Surrender') > 0 && menu.buttons.indexOf('Quit') > menu.buttons.indexOf('Surrender'),
-      'PvP: Surrender, then Quit, below Resume');
+    check(menu.buttons.join('|') === 'Resume|Sound: on|Surrender|Quit', `PvP menu is Resume, Sound, Surrender, Quit only (${menu.buttons.join(' | ')})`);
     const surrender = await buttonLook(page, 'Surrender');
     const quit = await buttonLook(page, 'Quit');
     check(surrender.color === RED && /danger/.test(surrender.className), `Surrender is red (${surrender.color})`);
@@ -146,8 +146,9 @@ try {
     await click(page, 'Quit');
     let m = await modal(page);
     check(m.title === 'Are you sure you want to quit?', `asks first: "${m.title}"`);
-    check(m.body.includes("The match continues without you — if you don't return, you'll forfeit after 3 missed shots (~90s)."),
+    check(m.body.includes("The match continues without you — if you don't return, you'll forfeit after 3 missed turns."),
       'says the match carries on and when it is forfeited');
+    check(!/d+s*s|seconds/.test(m.body), 'and names no seconds');
     check(m.buttons.join('|') === 'Quit|Stay in the match', m.buttons.join('|'));
     await page.screenshot({ path: shot('confirm-pvp-quit') });
     await click(page, 'Stay in the match');

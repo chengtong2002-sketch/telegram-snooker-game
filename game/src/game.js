@@ -586,7 +586,7 @@ export class Game {
       title: pvp ? 'Are you sure you want to quit?' : 'Quit practice?',
       body: pvp
         ? `<p>The match continues without you — if you don't return, you'll forfeit after
-           ${misses} missed shots (~${Math.round((misses * SHOT_CLOCK_MS) / 1000)}s).</p>
+           ${misses} missed turns.</p>
            <p class="note">Rejoin from the lobby any time before then and carry on where you left off.</p>`
         : '<p>This frame is not saved. Practice is never recorded or reward-eligible.</p>',
       actions: [
