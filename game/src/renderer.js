@@ -436,10 +436,11 @@ export class TableRenderer {
     ctx.restore();
   }
 
-  #drawAim(cue, angle, power) {
+  #drawAim(cue, angle, power, alpha = 1) {
     const { ctx } = this;
     const len = 40 + power * 90;
     ctx.save();
+    ctx.globalAlpha = alpha;
     ctx.strokeStyle = 'rgba(255,255,255,.55)';
     ctx.lineWidth = 0.5;
     ctx.setLineDash([3, 2.5]);
@@ -466,10 +467,14 @@ export class TableRenderer {
     const tipX = cue.x - Math.cos(angle) * back;
     const tipY = cue.y - Math.sin(angle) * back;
     if (this.cueSkin) {
+      cueCtx.save();
+      cueCtx.globalAlpha = alpha;
       drawCueSkin(cueCtx, this.cueSkin, { tipX, tipY, angle, length: 110 });
+      cueCtx.restore();
       return;
     }
     cueCtx.save();
+    cueCtx.globalAlpha = alpha;
     cueCtx.strokeStyle = '#d8b076';
     cueCtx.lineWidth = 1.6;
     cueCtx.beginPath();
@@ -519,7 +524,8 @@ export class TableRenderer {
    * @param {object} view
    * @param {Array}  view.balls
    * @param {string} view.ballOn      'red' | 'colour' | a colour id
-   * @param {object} [view.aim]       {angle, power} while aiming
+   * @param {object} [view.aim]       {angle, power, ghost?} while someone aims;
+   *   ghost dims it (the other player's aim has stopped arriving)
    * @param {boolean} [view.showD]    highlight the D for in-hand placement
    */
   draw(view) {
@@ -548,7 +554,7 @@ export class TableRenderer {
     }
 
     if (cue) {
-      if (view.aim) this.#drawAim(cue, view.aim.angle, view.aim.power);
+      if (view.aim) this.#drawAim(cue, view.aim.angle, view.aim.power, view.aim.ghost ? 0.45 : 1);
       this.#drawBall(cue);
     }
   }

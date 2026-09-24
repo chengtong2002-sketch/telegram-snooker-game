@@ -11,6 +11,8 @@ import { recordPracticeResult } from './settings.js';
 import { aimHint, hasDesktopPowerInput } from './powerInput.js';
 import { ImpactTracker } from './sound.js';
 import { skinIdsForTurn } from './skins.js';
+import { AimSender, RemoteAim, followAim } from './aimSync.js';
+import { runAiAim } from './aiAim.js';
 
 /**
  * Live state the browser drivers read. Not used by the game itself.
@@ -21,11 +23,8 @@ import { skinIdsForTurn } from './skins.js';
  */
 const DEBUG = (window.__snookerDebug ??= { shotsResolved: 0 });
 
-const AI_THINK_MS = 900;
 const POLL_MS = 4000;
 const STEPS_PER_FRAME = Math.round((1000 / 60) / PHYSICS.dt); // 5 at dt = 1/300s
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * Drives one session of play.
@@ -62,6 +61,14 @@ export class Game {
     this.destroyed = false;
     this.checkpointAcked = null;  // frame number the leading player already dismissed
 
+    // Someone else's cue, drawn while it is not your shot (display only, never the sim):
+    // the PvP opponent's live aim, or the practice AI lining up.
+    this.remoteAim = new RemoteAim();
+    this.aimSender = null;        // PvP: this player's aim, out to the opponent
+    this.aimFeed = null;          // PvP: the opponent's aim, in
+    this.aiPose = null;           // practice: the AI's cue while it lines up
+    this.shownPower = null;       // what the power meter shows, when it is not ours
+
     hud.setConcede(false);
     hud.onConcede(() => this.confirmConcede('unrecoverable'));
   }
@@ -80,6 +87,7 @@ export class Game {
     this.destroyed = true;
     clearInterval(this.pollTimer);
     clearInterval(this.clockTimer);
+    this.aimFeed?.close();
   }
 
   #startPractice() {
@@ -99,7 +107,28 @@ export class Game {
     this.#setPlayerLabels(match.playerNames);
     // Both cue balls decoded now, so the first swap at a turn change is instant.
     this.skins?.preload(match.skins);
+    if (!match.ended) this.#startAimSync();
     this.#beginTurn();
+  }
+
+  #startAimSync() {
+    this.aimSender = new AimSender((aim) => api.sendAim(this.matchId, aim));
+    this.aimFeed = followAim(
+      (signal) => api.openAimStream(this.matchId, signal),
+      (aim) => this.#onRemoteAim(aim),
+      {
+        // The opponent's shot just landed on the server: fetch it now, not at the next poll.
+        onMoved: () => { if (this.phase === 'waiting') this.#poll(); },
+        onStateChange: (st) => { DEBUG.aimStream = st; },
+      },
+    );
+  }
+
+  #onRemoteAim(aim) {
+    DEBUG.aimReceived = (DEBUG.aimReceived ?? 0) + 1;
+    // Only the player on the table now, and only while this one is watching.
+    if (this.phase !== 'waiting' || aim.seat === this.myIndex || aim.seat !== this.frame.turn) return;
+    this.remoteAim.push(aim, performance.now());
   }
 
   /** Replace local state with the server's. The server is always right. */
@@ -158,6 +187,11 @@ export class Game {
 
     if (this.mode === 'pvp' && this.state.checkpoint) return this.#showCheckpoint();
 
+    // Whoever aims now starts from nothing: no leftover cue from the last turn.
+    this.remoteAim.reset();
+    this.aiPose = null;
+    this.aimSender?.reset();
+
     const frame = this.frame;
     // Every ball is at rest here, so this is the one place the cue ball may
     // change skin: the shooter's, never mid-shot (docs/store-plan.md, decision 4).
@@ -175,6 +209,7 @@ export class Game {
     }
 
     if (this.isMyTurn) {
+      this.#showPower(null); // the meter is yours again
       this.phase = 'aiming';
       this.controls.setEnabled(true);
       this.controls.setPlacing(frame.inHand);
@@ -198,9 +233,20 @@ export class Game {
   }
 
   async #playAiTurn() {
-    await sleep(AI_THINK_MS);
-    if (this.destroyed || this.isMyTurn || this.state.ended) return;
+    // Decided first, then only acted out: runAiAim hands back this same object.
     const shot = chooseShot(this.frame, { difficulty: 'normal' });
+    const gone = () => this.destroyed || this.isMyTurn || this.state.ended;
+    await runAiAim({
+      shot,
+      fromAngle: this.lastAiAngle ?? this.controls.angle,
+      fromPower: 0.02,
+      onPose: (pose) => { this.aiPose = pose; },
+      cancelled: gone,
+    });
+    this.aiPose = null;
+    if (gone()) return;
+    this.lastAiAngle = shot.angle;
+    DEBUG.aiShots = [...(DEBUG.aiShots ?? []).slice(-9), { angle: shot.angle, power: shot.power }];
     await this.#animate(shot);
     const { state, outcome } = resolveShot(this.frame, shot);
     this.#applyLocalResult(state, outcome, false);
@@ -600,6 +646,9 @@ export class Game {
 
   #showMatchOver() {
     this.phase = 'over';
+    this.aimFeed?.close();
+    this.aimFeed = null;
+    this.#showPower(null);
     this.controls.setEnabled(false);
     this.hud.setConcede(false);
     clearInterval(this.pollTimer);
@@ -662,10 +711,49 @@ export class Game {
 
   // --- rendering -----------------------------------------------------------
 
+  /** PvP, this player aiming: out to the opponent, throttled (AimSender decides what goes). */
+  #sendAim() {
+    if (this.mode !== 'pvp' || !this.aimSender || !this.controls.cue) return;
+    const { angle, power } = this.controls.aim;
+    const cue = this.frame.inHand ? { x: this.controls.cue.x, y: this.controls.cue.y } : undefined;
+    if (this.aimSender.update({ angle, power, cue }, performance.now())) DEBUG.aimSent = this.aimSender.sent;
+  }
+
+  /** The meter shows the other player's power while they aim; null gives it back to yours. */
+  #showPower(power) {
+    if (power == null) {
+      // The controls drive the meter from here on, so forget what was last shown.
+      this.shownPower = null;
+      this.hud.setPower(this.controls.power);
+      return;
+    }
+    const pct = Math.round(power * 100);
+    if (pct === this.shownPower) return;
+    this.shownPower = pct;
+    this.hud.setPower(power);
+  }
+
   #renderLoop = () => {
     if (this.destroyed) return;
     if (this.state) {
-      const balls = this.animBalls ?? this.frame.balls;
+      let balls = this.animBalls ?? this.frame.balls;
+      let aim = null;
+      DEBUG.otherAim = null;
+      if (this.phase === 'aiming') {
+        aim = this.controls.aim;
+        this.#sendAim();
+      } else if (this.phase === 'waiting' && !this.animBalls) {
+        const pose = this.mode === 'pvp' ? this.remoteAim.pose(performance.now()) : this.aiPose;
+        if (pose) {
+          aim = { angle: pose.angle, power: pose.power, ghost: Boolean(pose.stale) };
+          this.#showPower(pose.power);
+          // Ball in hand: draw the cue ball where they are holding it.
+          if (pose.cue && this.frame.inHand) {
+            balls = balls.map((b) => (b.id === 'cue' ? { ...b, x: pose.cue.x, y: pose.cue.y } : b));
+          }
+        }
+        DEBUG.otherAim = pose ? { angle: pose.angle, power: pose.power, stale: Boolean(pose.stale) } : null;
+      }
       // Hook for the browser drivers (test/drive-*.mjs): it lets them tell a
       // shot that actually resolved from one that silently did nothing, which
       // the HUD text alone cannot always show.
@@ -678,7 +766,7 @@ export class Game {
         highlightOn: this.phase === 'aiming',
         // Also while the cue ball is in hand: the player needs to see the line
         // while choosing where in the D to put the ball.
-        aim: this.phase === 'aiming' ? this.controls.aim : null,
+        aim,
         showD: this.phase === 'aiming' && this.frame.inHand,
       });
     }

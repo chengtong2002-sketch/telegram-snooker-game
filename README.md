@@ -332,6 +332,7 @@ npm run smoke:game                    # drives a practice frame in a real browse
 npm run smoke:concede -w @snooker/game   # both PvP concede paths, two players at once
 npm run smoke:offline -w @snooker/game   # the offline story; practice makes no requests
 npm run smoke:rm -w @snooker/game        # card payments (RM) in the store; needs only vite
+npm run smoke:aim -w @snooker/game       # live aim: two browsers, plus the practice AI lining up
 ```
 
 The smokes are separate because they each need the backend and vite running plus
@@ -350,6 +351,11 @@ phones home fails the run.
 vite. It drives the store side of a Revenue Monster payment (open the checkout,
 wait, get the coins; come back from RM's page into the store) and the price
 buttons at 320 wide. The backend side is `backend/test/rmPayments.test.js`.
+`smoke:aim` pairs two fresh dev players through the API and checks that the
+waiting player's drawn cue follows the shooter's (angle, power, ball in hand),
+freezes and dims when updates stall, and that the practice AI's cue stops exactly
+on the shot it plays. A PvP table holds its aim stream open, so drivers must not
+wait for `networkidle` on a PvP page; it never comes.
 
 The unit suite covers the things that would actually cost money if they broke:
 the budget can't be overspent, a player can't exceed their share cap, a
@@ -365,6 +371,23 @@ count twice, and a wallet proof can't be forged to redirect a payout.
 - **Matchmaking is a plain FIFO queue.** No rating, no rematch, no friend
   challenge — the pool is too small for those to help yet.
 - **Best of 3 only.** Best of 5 and ranked play are deliberate fast-follows.
+
+### Live aim (PvP)
+
+While one player aims, the other sees the cue, aim line and power move. The
+shooter posts `{angle, power, cue?}` to `POST /api/match/:id/aim` (on change,
+at most ~10 a second, plus a 1 s heartbeat); the opponent holds
+`GET /api/match/:id/aim-stream` open — server-sent events read with `fetch`, so
+the Bearer header travels as usual. The backend relays to the other seat only,
+stores nothing and never lets it near the sim: the shot still goes through
+`/shot`. Aim from the player who is not on is ignored; each match relays at most
+15 a second, each player may post 20 a second and hold 3 streams, and both routes
+skip the app-wide 240/min limit. After a shot, concede or continue the stream
+also carries `moved`, so the waiting table polls at once.
+
+**The relay is in memory: the backend must run as ONE instance.** With replicas,
+two players on different instances would not see each other's aim (moving it to
+Postgres LISTEN/NOTIFY would fix that).
 
 ## Legal boundary
 

@@ -6,6 +6,7 @@ import rateLimit from 'express-rate-limit';
 import { config } from './config.js';
 import { logger } from './logger.js';
 import routes, { internalRoutes } from './routes/index.js';
+import { isAimPath } from './routes/match.js';
 import rmPublicRoutes from './routes/rmPublic.js';
 
 /** Build the Express app. Kept separate from index.js so tests can mount it. */
@@ -28,7 +29,11 @@ export function buildApp({ requestLogging = true } = {}) {
     allowedHeaders: ['content-type', 'authorization', 'x-internal-key'],
   }));
 
-  app.use('/api', rateLimit({ windowMs: 60_000, limit: 240, standardHeaders: true }));
+  // Live aim has its own per-player and per-match caps (routes/match.js): at
+  // ~10 updates a second it would use up this limit in half a minute.
+  app.use('/api', rateLimit({
+    windowMs: 60_000, limit: 240, standardHeaders: true, skip: (req) => isAimPath(req.path),
+  }));
   app.use('/api', routes);
   app.use('/internal', internalRoutes);
 

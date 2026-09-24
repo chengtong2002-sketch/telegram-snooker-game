@@ -88,6 +88,11 @@ const lastBlack = (scores) => (state) => {
 };
 const POT_BLACK = { angle: Math.PI / 4, power: 0.55 };
 
+/** The PvP table has loaded its match (any phase past the initial idle). */
+const tableReady = (page) => page.waitForFunction(
+  () => window.__snookerDebug?.phase && window.__snookerDebug.phase !== 'idle', null, { timeout: 20_000 },
+);
+
 async function openPlayer(context, n, matchId) {
   const page = await context.newPage();
   page.on('console', (msg) => { if (msg.type() === 'error') errors.push(`dev${n} console.error: ${msg.text()}`); });
@@ -96,7 +101,9 @@ async function openPlayer(context, n, matchId) {
     // A 409 from /shot is expected nowhere here; anything >= 400 is worth seeing.
     if (res.status() >= 400 && !res.url().includes('favicon')) errors.push(`dev${n} HTTP ${res.status()} ${res.url()}`);
   });
-  await page.goto(`${GAME}?dev=${n}&mode=pvp&match=${matchId}`, { waitUntil: 'networkidle' });
+  // Not 'networkidle': a PvP table holds its live-aim stream open, so the network never idles.
+  await page.goto(`${GAME}?dev=${n}&mode=pvp&match=${matchId}`, { waitUntil: 'load' });
+  await tableReady(page);
   return page;
 }
 
@@ -203,7 +210,8 @@ async function midFrameScenario(context) {
   check('hidden when the deficit equals what remains (7 behind, 7 on the table)', !(await concedeVisible(page)));
 
   await setScores([50, 58]);
-  await page.reload({ waitUntil: 'networkidle' });
+  await page.reload({ waitUntil: 'load' });
+  await tableReady(page);
   await page.waitForFunction(() => !document.getElementById('concede').hidden, null, { timeout: 10_000 }).catch(() => {});
   check('shown once the deficit exceeds it (8 behind, 7 on the table)', await concedeVisible(page));
   await page.screenshot({ path: path.join(here, 'concede-4-midframe-button.png') });

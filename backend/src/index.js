@@ -5,6 +5,7 @@ import { buildApp } from './app.js';
 import { sweepShotClocks } from './services/matchService.js';
 import { reconcileStars } from './services/stars.js';
 import { reconcileRm } from './services/rm/payments.js';
+import { aimRelay } from './services/aimRelay.js';
 
 assertProductionConfig(logger);
 assertPaymentsConfig(logger);
@@ -63,6 +64,8 @@ async function shutdown(signal) {
   clearInterval(challengeReaper);
   clearInterval(starsReconciler);
   clearInterval(rmReconciler);
+  // Open aim streams would otherwise hold server.close() until the forced exit.
+  aimRelay.closeAll();
   server.close(async () => {
     await closeDb();
     process.exit(0);

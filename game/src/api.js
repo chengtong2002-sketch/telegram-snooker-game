@@ -90,7 +90,28 @@ export const continueMatch = (id) => request(`/match/${id}/continue`, { method: 
 export const sendShot = (matchId, resultId, shot) =>
   request(`/match/${matchId}/shot`, { method: 'POST', body: { resultId, shot } });
 
-export const syncResults = (results) => request('/sync', { method: 'POST', body: { results } });
+/**
+ * Live aim, display only (see aimSync.js). Fire and forget: nothing waits on
+ * it, and it does not touch the online/offline badge — a dropped aim update
+ * says nothing the shot and poll requests do not already say.
+ */
+export async function sendAim(matchId, aim) {
+  if (!token) return;
+  await fetch(`${BASE}/api/match/${matchId}/aim`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    body: JSON.stringify(aim),
+    signal: AbortSignal.timeout(3000),
+  });
+}
+
+/** The opponent's aim as server-sent events. fetch, not EventSource: it has to carry the Bearer header. */
+export const openAimStream = (matchId, signal) => fetch(`${BASE}/api/match/${matchId}/aim-stream`, {
+  headers: { authorization: `Bearer ${token}`, accept: 'text/event-stream' },
+  signal,
+});
+
+export const syncResults =(results) => request('/sync', { method: 'POST', body: { results } });
 
 export const leaderboard = (scope = 'period') => request(`/leaderboard?scope=${scope}`);
 
