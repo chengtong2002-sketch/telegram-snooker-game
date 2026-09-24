@@ -6,6 +6,7 @@ import leaderboardRoutes from './leaderboard.js';
 import rewardRoutes from './rewards.js';
 import statsRoutes from './stats.js';
 import syncRoutes from './sync.js';
+import storeRoutes from './store.js';
 import internalRoutes from './internal.js';
 
 const router = Router();
@@ -19,6 +20,7 @@ router.use('/leaderboard', leaderboardRoutes);
 router.use('/rewards', rewardRoutes);
 router.use('/stats', statsRoutes);
 router.use('/sync', syncRoutes);
+router.use('/store', storeRoutes);
 
 export { internalRoutes };
 export default router;

@@ -4,6 +4,7 @@ import { config } from '../config.js';
 import { logger } from '../logger.js';
 import { activeWallet } from '@snooker/db';
 import { activeMatchesFor } from '../services/matchService.js';
+import { equippedIds } from '../services/equipped.js';
 
 const router = Router();
 
@@ -13,7 +14,7 @@ router.post('/telegram', async (req, res) => {
 
   if (!initData && config.allowDevAuth && req.body?.devUser?.id) {
     const { token, user } = await issueSession(req.body.devUser);
-    return res.json({ token, user, dev: true });
+    return res.json({ token, user: { ...user, equipped: equippedIds(user) }, dev: true });
   }
 
   const check = verifyInitData(initData);
@@ -37,6 +38,8 @@ router.post('/telegram', async (req, res) => {
       username: user.username,
       firstName: user.first_name,
       bestBreak: user.best_break,
+      // Copied to the device, so practice draws the player's skins offline too.
+      equipped: equippedIds(user),
     },
   });
 });

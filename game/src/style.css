@@ -561,14 +561,174 @@ html, body {
 }
 .lobby-btn:disabled:active { background: rgba(255,255,255,.035); }
 
-/* Equal thirds: three buttons of the same weight, so none of them reads as the
-   next thing to press. */
+/* Store | Rewards | How to play | gear. The three labelled buttons share the
+   width equally, so none of them reads as the next thing to press; the gear
+   stays a fixed square. */
 .lobby-grid {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) 46px; gap: 8px;
   margin-top: 8px;
 }
-.lobby-grid .lobby-btn { min-height: 46px; font-size: clamp(11px, 3.3vw, 12.5px); white-space: nowrap; }
+.lobby-grid .lobby-btn {
+  min-height: 46px; padding: 0 6px;
+  font-size: clamp(11px, 3.3vw, 12.5px); white-space: nowrap;
+}
 .btn-icon { width: 17px; height: 17px; flex: 0 0 auto; }
+
+/* The cue rings' gold (#d4ad52), not the amber --warn, so it never reads as a
+   warning. Outlined, never filled: PLAY is the only filled button. */
+#lobby-store {
+  border-color: rgba(212,173,82,.62);
+  color: #ecd08b;
+  background: rgba(212,173,82,.05);
+}
+#lobby-store:active { background: rgba(212,173,82,.14); }
+#lobby-store:disabled:active { background: rgba(212,173,82,.05); }
+
+/* ---------- coins ---------- */
+
+.coin { width: 16px; height: 16px; flex: 0 0 auto; display: block; }
+
+.coin-chip {
+  flex: 0 0 auto;
+  align-self: center;
+  margin-left: auto;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 11px 5px 7px;
+  border: 1px solid rgba(212,173,82,.45); border-radius: 999px;
+  background: rgba(0,0,0,.28);
+  color: #f3dfa6;
+  font: inherit; font-weight: 800; font-size: 14px; font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.coin-chip:active { background: rgba(212,173,82,.14); }
+.coin-chip.static { cursor: default; }
+.coin-chip.static:active { background: rgba(0,0,0,.28); }
+/* A refund left the balance below zero: amber, like every other "not now". */
+.coin-chip.neg { color: var(--warn); border-color: var(--warn); }
+.coin-chip[hidden] { display: none; }
+
+/* ---------- store ---------- */
+
+/* Its own screen over the lobby (30), under #overlay (40): the buy
+   confirmation is an ordinary sheet on top of it. */
+#store {
+  position: absolute; inset: 0; z-index: 35;
+  display: flex; justify-content: center;
+  padding: calc(var(--corner-t) + 10px) calc(12px + var(--safe-r)) 0 calc(12px + var(--safe-l));
+  background:
+    radial-gradient(120% 70% at 50% 0%, #1a2a23 0%, rgba(10,18,15,0) 70%),
+    #0a120f;
+  touch-action: pan-y;
+}
+#store[hidden] { display: none; }
+
+.store-inner {
+  width: min(520px, 100%);
+  display: flex; flex-direction: column;
+  min-height: 0; /* lets the list, not the page, scroll */
+}
+
+.store-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 0 12px;
+}
+.store-head h2 { margin: 0; font-size: 20px; font-weight: 800; }
+.store-back {
+  width: 38px; height: 38px; flex: 0 0 auto;
+  display: grid; place-items: center;
+  border: 1px solid rgba(146,190,168,.16); border-radius: 12px;
+  background: rgba(255,255,255,.04); color: var(--text);
+  cursor: pointer;
+}
+.store-back svg { width: 20px; height: 20px; }
+.store-back:active { background: rgba(255,255,255,.09); }
+
+.store-tabs {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;
+  padding: 4px;
+  border-radius: 14px;
+  background: rgba(0,0,0,.35);
+  border: 1px solid rgba(146,190,168,.10);
+}
+.store-tab {
+  min-height: 36px;
+  border: none; border-radius: 10px;
+  background: transparent; color: var(--muted);
+  font: inherit; font-weight: 700; font-size: 13px;
+  cursor: pointer;
+}
+.store-tab.on {
+  background: linear-gradient(180deg, #26372f, #1d2b25);
+  color: var(--text);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 1px 3px rgba(0,0,0,.4);
+}
+
+.store-list {
+  list-style: none; margin: 12px 0 0; padding: 0 0 4px;
+  display: flex; flex-direction: column; gap: 8px;
+  overflow-y: auto; min-height: 0; flex: 0 1 auto;
+  overscroll-behavior: contain;
+}
+
+.store-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px;
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,0) 60%),
+    #13201b;
+  border: 1px solid rgba(146,190,168,.11);
+  flex: 0 0 auto;
+}
+.store-item.is-equipped { border-color: rgba(53,196,138,.45); }
+
+/* A cue is 28 times longer than it is wide: its picture takes the whole row. */
+.item-cue { flex-direction: column; align-items: stretch; gap: 10px; padding: 14px 12px 12px; }
+.cue-preview { display: block; width: 100%; height: auto; pointer-events: none; }
+.item-line { display: flex; align-items: center; gap: 12px; }
+
+.ball-preview { width: 46px; height: 46px; flex: 0 0 auto; pointer-events: none; }
+
+.item-meta { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1 1 auto; }
+.item-name { font-size: 15px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tier { font-size: 10px; font-weight: 800; letter-spacing: .7px; text-transform: uppercase; color: var(--muted); }
+.tier-classic { color: #8fd6b6; }
+.tier-rare { color: #7fb8ff; }
+.tier-epic { color: #d7a6ff; }
+
+.item-action { flex: 0 0 auto; display: flex; align-items: center; }
+.item-btn {
+  min-width: 84px; min-height: 38px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 0 14px;
+  border: 1px solid rgba(146,190,168,.22); border-radius: 11px;
+  background: rgba(255,255,255,.04); color: var(--text);
+  font: inherit; font-weight: 800; font-size: 13px; font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.item-btn:active { background: rgba(255,255,255,.09); }
+.item-btn.buy { border-color: rgba(212,173,82,.62); color: #f3dfa6; background: rgba(212,173,82,.06); }
+.item-btn.buy:active { background: rgba(212,173,82,.16); }
+.item-btn:disabled { opacity: .5; cursor: default; }
+.item-state {
+  min-width: 84px; text-align: center;
+  font-size: 12px; font-weight: 800; letter-spacing: .3px;
+  color: var(--accent);
+}
+
+.item-pack { justify-content: space-between; }
+.pack-amount { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 800; }
+.pack-amount .coin { width: 26px; height: 26px; }
+
+.store-empty { padding: 28px 8px; text-align: center; color: var(--muted); font-size: 13px; }
+
+.store-note {
+  margin: 10px 2px calc(14px + var(--safe-b));
+  font-size: 11px; line-height: 1.45; color: var(--muted);
+  flex: 0 0 auto;
+}
+.store-note:empty { display: none; }
 
 /* A 320px phone: the three stat tiles are the tightest thing on the screen and
    MATCHES WON is the longest label. Buy the room back from padding and gaps
@@ -580,6 +740,11 @@ html, body {
   .stat-row, .lobby-grid { gap: 6px; }
   .stat { padding: 13px 3px 11px; }
   .stat span { letter-spacing: 0; }
+  /* Four buttons in 296px: the labels stay and the Store and Rewards icons go.
+     "How to play" may take two lines rather than being cut. */
+  #lobby-store .btn-icon, #lobby-rewards .btn-icon { display: none; }
+  #lobby-rules { white-space: normal; line-height: 1.15; }
+  .coin-chip { padding: 4px 9px 4px 6px; font-size: 13px; }
 }
 
 /* A landscape phone is ~350px tall: give up the decorative height so PLAY stays
@@ -616,6 +781,9 @@ html, body {
    #lobby's grid already centres it both ways. */
 @media (min-width: 769px) and (min-height: 720px) {
   .lobby-inner { zoom: 1.2381; } /* 520 / 420 */
+  /* The store at a comparable scale, off the top edge. */
+  #store { padding-top: 40px; padding-bottom: 24px; }
+  .store-inner { zoom: 1.15; }
 }
 
 /* ---------- portrait guard ---------- */

@@ -2,6 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config as loadEnv } from 'dotenv';
 import { SHOT_CLOCK_MS, SHOT_CLOCK_GRACE_MS } from '@snooker/sim';
+import { parsePacks } from './packs.js';
 
 // npm workspaces run each service with cwd set to its own package directory, so
 // a bare `import 'dotenv/config'` looks for ./<service>/.env and silently misses
@@ -70,6 +71,10 @@ export const config = {
     // this list can farm rewards, so keep it empty outside testnet.
     limitExemptTelegramIds: new Set((process.env.REWARD_LIMIT_EXEMPT_TELEGRAM_IDS ?? '')
       .split(',').map((s) => s.trim()).filter((s) => /^\d+$/.test(s))),
+  },
+
+  store: {
+    packs: parsePacks(process.env.COIN_PACKS),
   },
 
   // Allows local dev without a real Telegram client.

@@ -179,13 +179,26 @@ export function ballBaseColour(svg) {
  * @param {URLSearchParams|string} search
  * @param {object} catalog  cosmetics.json
  */
-export function pickSkins(search, catalog) {
+export function pickSkins(search, catalog, chosen = {}) {
   const q = typeof search === 'string' ? new URLSearchParams(search) : search;
   const choose = (list = [], id) => list.find((item) => item.id === id)
     ?? list.find((item) => item.default)
     ?? null;
   return {
-    cue: choose(catalog.cues, q.get('cue')),
-    ball: choose(catalog.cueBalls, q.get('ball')),
+    cue: choose(catalog.cues, q.get('cue') ?? chosen?.cue),
+    ball: choose(catalog.cueBalls, q.get('ball') ?? chosen?.ball),
   };
+}
+
+/**
+ * Whose skins to draw this turn (docs/store-plan.md, decision 4): the
+ * shooter's. PvP reads the seat's ids from the match payload; practice is
+ * always the player's own, AI turns included. Anything missing gives {},
+ * which pickSkins turns into the defaults.
+ *
+ * @param {{mode: 'practice'|'pvp', seatSkins?: object[], turn: number, mine?: object}} args
+ */
+export function skinIdsForTurn({ mode, seatSkins, turn, mine }) {
+  if (mode === 'practice') return mine ?? {};
+  return (Array.isArray(seatSkins) ? seatSkins[turn] : null) ?? {};
 }

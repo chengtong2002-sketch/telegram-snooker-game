@@ -204,6 +204,12 @@ test('coins never reach rewards, matches or the sim', () => {
     const text = fs.readFileSync(file, 'utf8');
     assert.doesNotMatch(text, /coin_ledger|user_items|coins\.js|@snooker\/cosmetics|balanceOf/, path.basename(file));
   }
+  // Match payloads carry each seat's skin ids (docs/store-plan.md, decision 4)
+  // through equipped.js, which reads the catalog and never the ledger.
+  const equipped = fs.readFileSync(path.join(src, 'services', 'equipped.js'), 'utf8');
+  const imports = equipped.split('\n').filter((line) => line.startsWith('import ')).map((line) => line.split(' from ')[1]);
+  assert.deepEqual(imports, ["'@snooker/cosmetics';"], 'equipped.js imports the catalog and nothing else');
+  assert.doesNotMatch(equipped, /coin_ledger|user_items|balanceOf/);
 });
 
 /* ---------- the grant script ---------- */

@@ -2,6 +2,7 @@ import { Router } from '../asyncRouter.js';
 import { requireAuth } from '../auth.js';
 import { getDb } from '@snooker/db';
 import { dailyEligibleUsage } from '../services/rewards.js';
+import { balanceOf } from '../services/coins.js';
 
 const router = Router();
 
@@ -28,9 +29,10 @@ async function matchRecord(userId, db = getDb()) {
 
 /** Everything the lobby shows, in one call so the first screen paints once. */
 router.get('/', async (req, res) => {
-  const [record, daily] = await Promise.all([
+  const [record, daily, coins] = await Promise.all([
     matchRecord(req.user.id),
     dailyEligibleUsage(req.user.id),
+    balanceOf(req.user.id),
   ]);
   res.json({
     ...record,
@@ -39,6 +41,8 @@ router.get('/', async (req, res) => {
     bestBreak: req.user.best_break,
     lifetimeEligiblePoints: req.user.lifetime_eligible_points,
     daily,
+    // The lobby's coin chip. Only read here: coins.js owns the ledger.
+    coins,
   });
 });
 

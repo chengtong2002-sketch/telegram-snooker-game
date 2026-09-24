@@ -40,6 +40,41 @@ export function setSetting(key, value) {
 
 export const soundEnabled = () => load().sound !== false;
 
+/* ---------- equipped skins ---------- */
+
+/**
+ * The server holds what a player has equipped (docs/store-plan.md, decision 5).
+ * This is the device's copy, refreshed at every sign-in and every equip, so a
+ * practice frame with no connection still draws the player's own cue.
+ */
+const EQUIPPED_KEY = 'snooker.equipped';
+
+/** @returns {{cue?: string, ball?: string}} ids, or {} for the defaults */
+export function equippedSkins() {
+  try {
+    const raw = window.localStorage?.getItem(EQUIPPED_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (parsed && typeof parsed === 'object') {
+      return {
+        cue: typeof parsed.cue === 'string' ? parsed.cue : undefined,
+        ball: typeof parsed.ball === 'string' ? parsed.ball : undefined,
+      };
+    }
+  } catch {
+    // Blocked or corrupt: the defaults.
+  }
+  return {};
+}
+
+export function rememberEquipped(equipped) {
+  if (!equipped || typeof equipped !== 'object') return;
+  try {
+    window.localStorage?.setItem(EQUIPPED_KEY, JSON.stringify({ cue: equipped.cue, ball: equipped.ball }));
+  } catch {
+    // Not persisted; the next sign-in brings it back.
+  }
+}
+
 /* ---------- practice record ---------- */
 
 /**

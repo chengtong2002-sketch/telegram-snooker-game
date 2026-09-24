@@ -7,14 +7,15 @@ import { TableRenderer } from './renderer.js';
 import { Controls } from './controls.js';
 import { Game } from './game.js';
 import {
-  showLobby, hideLobby, setPlayButton, refreshLobbyStats,
+  showLobby, hideLobby, setPlayButton, refreshLobbyStats, setLobbyCoins,
 } from './lobby.js';
+import { openStore } from './store.js';
 import { startAutoSync, onQueueChange, pendingCount } from './offline.js';
 import { startConnectionWatch } from './connection.js';
 import * as api from './api.js';
 import { installTableSound } from './sound.js';
-import { applySkins } from './skinLoader.js';
-import { soundEnabled, setSetting } from './settings.js';
+import { createSkinSwitcher, mySkinIds } from './skinLoader.js';
+import { soundEnabled, setSetting, rememberEquipped } from './settings.js';
 
 // TON Connect pulls in a large bundle; keep it out of the first paint so the
 // table is playable immediately and the wallet loads only when asked for.
@@ -28,9 +29,10 @@ trackVisibleViewport();
 const hud = new Hud();
 const canvas = document.getElementById('table');
 const renderer = new TableRenderer(canvas, { cueLayer: document.getElementById('cue-layer') });
-// Cue and cue-ball skins: the catalog defaults for everyone; in dev,
-// ?cue=…&ball=… previews any item.
-applySkins(renderer);
+// Cue and cue-ball skins. The player's own until a turn says otherwise (in PvP
+// they follow the shooter); in dev, ?cue=…&ball=… previews any item.
+const skins = createSkinSwitcher(renderer);
+skins.show(mySkinIds());
 // Read live, so the Settings toggle takes effect on the next sound.
 const sound = installTableSound({ isEnabled: soundEnabled });
 
@@ -133,6 +135,12 @@ async function boot() {
     }
   }
 
+  // The server's record of what is equipped, kept on the device for offline practice.
+  if (user?.equipped) {
+    rememberEquipped(user.equipped);
+    skins.show(mySkinIds());
+  }
+
   startAutoSync();
   onQueueChange((n) => hud.setPending(n));
   hud.setPending(await pendingCount());
@@ -176,6 +184,15 @@ async function openLobby(me) {
     // The wallet sheet opens over the lobby, which stays behind it; closing
     // just drops back with the numbers re-read in case a claim changed them.
     onRewards: () => openWalletScreen(hud, { onClose: () => refreshLobbyStats() }),
+    onStore: () => openStore({
+      hud,
+      onChange: ({ balance, equipped }) => {
+        setLobbyCoins(balance);
+        rememberEquipped(equipped);
+        skins.show(mySkinIds());
+      },
+      onClose: () => refreshLobbyStats(),
+    }),
   });
 }
 
@@ -292,7 +309,9 @@ function waitForMatch() {
 
 async function startGame(mode, matchId, me, controls) {
   game?.destroy();
-  game = new Game({ mode, matchId, me, hud, renderer, controls, sound });
+  game = new Game({
+    mode, matchId, me, hud, renderer, controls, sound, skins, mySkins: mySkinIds,
+  });
   try {
     await game.start();
   } catch (err) {

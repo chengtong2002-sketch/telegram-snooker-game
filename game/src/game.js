@@ -10,6 +10,7 @@ import { enqueue, flush, newResultId } from './offline.js';
 import { recordPracticeResult } from './settings.js';
 import { aimHint, hasDesktopPowerInput } from './powerInput.js';
 import { ImpactTracker } from './sound.js';
+import { skinIdsForTurn } from './skins.js';
 
 /**
  * Live state the browser drivers read. Not used by the game itself.
@@ -35,7 +36,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * server's resolution replaces whatever the client came up with.
  */
 export class Game {
-  constructor({ mode, matchId, me, hud, renderer, controls, sound = null }) {
+  constructor({
+    mode, matchId, me, hud, renderer, controls, sound = null, skins = null, mySkins = () => ({}),
+  }) {
     this.mode = mode;             // 'practice' | 'pvp'
     this.matchId = matchId;
     this.me = me;
@@ -43,6 +46,8 @@ export class Game {
     this.renderer = renderer;
     this.controls = controls;
     this.sound = sound;
+    this.skins = skins;           // createSkinSwitcher(renderer), or null
+    this.mySkins = mySkins;       // the player's own equipped ids
 
     this.myIndex = 0;
     this.state = null;            // sim match state
@@ -90,6 +95,8 @@ export class Game {
     const { match } = await api.getMatch(this.matchId);
     this.#adoptServerMatch(match);
     this.#setPlayerLabels(match.playerNames);
+    // Both cue balls decoded now, so the first swap at a turn change is instant.
+    this.skins?.preload(match.skins);
     this.#beginTurn();
   }
 
@@ -148,6 +155,11 @@ export class Game {
     if (this.mode === 'pvp' && this.state.checkpoint) return this.#showCheckpoint();
 
     const frame = this.frame;
+    // Every ball is at rest here, so this is the one place the cue ball may
+    // change skin: the shooter's, never mid-shot (docs/store-plan.md, decision 4).
+    this.skins?.show(skinIdsForTurn({
+      mode: this.mode, seatSkins: this.serverMatch?.skins, turn: frame.turn, mine: this.mySkins(),
+    }));
     this.controls.setCue(frame.balls.find((b) => b.id === 'cue'));
     this.hud.setFrame(frame, this.state.framesWon);
     this.#updateConcedeButton();

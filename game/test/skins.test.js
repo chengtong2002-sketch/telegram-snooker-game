@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import { BALL_RADIUS } from '@snooker/sim';
 import {
-  parseCueSvg, drawCueSkin, CUE_BUTT_WIDTH, prepareBallSvg, ballImageSize, ballBaseColour, pickSkins,
+  parseCueSvg, drawCueSkin, CUE_BUTT_WIDTH, prepareBallSvg, ballImageSize, ballBaseColour, pickSkins, skinIdsForTurn,
 } from '../src/skins.js';
 import { BALL_COLOURS, CLOTH } from '../src/renderer.js';
 
@@ -233,6 +233,26 @@ test('?cue= and ?ball= pick catalog items; unknown ids fall back to the defaults
   assert.deepEqual(ids(pickSkins('?cue=crimson-crown&ball=gold-band', catalog)), { cue: 'crimson-crown', ball: 'gold-band' });
   assert.deepEqual(ids(pickSkins('?cue=nope&ball=<b>', catalog)), { cue: 'club-ash', ball: 'club-white' });
   assert.deepEqual(ids(pickSkins(new URLSearchParams('ball=pearl'), catalog)), { cue: 'club-ash', ball: 'pearl' });
+});
+
+test('equipped ids are drawn; a dev URL switch still wins; stale ids fall back', () => {
+  assert.deepEqual(ids(pickSkins('', catalog, { cue: 'emerald-hall', ball: 'pearl' })), { cue: 'emerald-hall', ball: 'pearl' });
+  assert.deepEqual(ids(pickSkins('?cue=obsidian-gold', catalog, { cue: 'emerald-hall', ball: 'pearl' })), { cue: 'obsidian-gold', ball: 'pearl' });
+  // A cue id where a ball belongs, a retired item, junk: the default, never nothing.
+  assert.deepEqual(ids(pickSkins('', catalog, { cue: 'pearl', ball: 'retired' })), { cue: 'club-ash', ball: 'club-white' });
+  assert.deepEqual(ids(pickSkins('', catalog, null)), { cue: 'club-ash', ball: 'club-white' });
+});
+
+test('skins follow the shooter in PvP; practice is always the player\'s own', () => {
+  const seatSkins = [{ cue: 'crimson-crown', ball: 'pearl' }, { cue: 'club-ash', ball: 'gold-band' }];
+  const mine = { cue: 'emerald-hall', ball: 'spotted-trainer' };
+  assert.deepEqual(skinIdsForTurn({ mode: 'pvp', seatSkins, turn: 0, mine }), seatSkins[0]);
+  assert.deepEqual(skinIdsForTurn({ mode: 'pvp', seatSkins, turn: 1, mine }), seatSkins[1]);
+  // The AI's turn in practice still draws the player's skins.
+  assert.deepEqual(skinIdsForTurn({ mode: 'practice', seatSkins, turn: 1, mine }), mine);
+  // An older server with no skins in the payload: defaults, not the player's own.
+  assert.deepEqual(skinIdsForTurn({ mode: 'pvp', seatSkins: undefined, turn: 1, mine }), {});
+  assert.deepEqual(ids(pickSkins('', catalog, skinIdsForTurn({ mode: 'pvp', turn: 0 }))), { cue: 'club-ash', ball: 'club-white' });
 });
 
 test('a catalog with no default gives no skin rather than throwing', () => {

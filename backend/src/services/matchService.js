@@ -10,6 +10,7 @@ import {
   notifyYourTurn, notifyMatchOver, notifyFrameCheckpoint,
 } from './notify.js';
 import { recordEligibleBreak, DAILY_ELIGIBLE_MATCH_CAP, DAILY_PAIR_MATCH_CAP } from './rewards.js';
+import { equippedIds } from './equipped.js';
 
 const shotDeadline = () => new Date(Date.now() + config.shotClockSeconds * 1000);
 
@@ -39,13 +40,22 @@ function openCheckpointIfDue(state, previousFrameNumber) {
 
 const displayName = (u) => (u?.username ? `@${u.username}` : (u?.first_name ?? 'Player'));
 
-/** Names for both seats, so the Mini App HUD can label the avatars. */
-async function playerNames(state) {
+/**
+ * Names and skins for both seats: the HUD labels the avatars, and the renderer
+ * draws each shooter's own cue and cue ball. Skins are cosmetic ids read from
+ * users when the payload is built, never stored in the match state, so the sim
+ * never sees them.
+ */
+async function seatInfo(state) {
   const ids = state.players.map(Number).filter(Number.isFinite);
-  if (ids.length === 0) return ['Player', 'Player'];
-  const rows = await getDb()('users').whereIn('id', ids).select('id', 'username', 'first_name');
+  const rows = ids.length === 0 ? [] : await getDb()('users').whereIn('id', ids)
+    .select('id', 'username', 'first_name', 'equipped_cue', 'equipped_ball');
   const byId = new Map(rows.map((r) => [Number(r.id), r]));
-  return state.players.map((id) => displayName(byId.get(Number(id))));
+  const seats = state.players.map((id) => byId.get(Number(id)));
+  return {
+    playerNames: seats.map(displayName),
+    skins: seats.map(equippedIds),
+  };
 }
 
 export function publicMatch(row, state) {
@@ -71,9 +81,9 @@ export function publicMatch(row, state) {
   };
 }
 
-/** publicMatch plus the two display names. Use this wherever a client sees it. */
+/** publicMatch plus each seat's name and skins. Use this wherever a client sees it. */
 export async function publicMatchForClient(row, state) {
-  return { ...publicMatch(row, state), playerNames: await playerNames(state) };
+  return { ...publicMatch(row, state), ...await seatInfo(state) };
 }
 
 export async function createPvpMatch(userIdA, userIdB) {

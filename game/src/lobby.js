@@ -38,6 +38,9 @@ function elements() {
       capNote: $('cap-note'),
       play: $('lobby-play'),
       practice: $('lobby-practice'),
+      store: $('lobby-store'),
+      coins: $('lobby-coins'),
+      coinsValue: $('lobby-coins-value'),
       rewards: $('lobby-rewards'),
       rules: $('lobby-rules'),
       settings: $('lobby-settings'),
@@ -82,6 +85,7 @@ function paintSub(el) {
 
 function paintStats(el, stats) {
   lastStats = stats;
+  paintCoins(el, stats.coins);
   el.points.textContent = fmt(stats.lifetimeEligiblePoints);
   el.matches.textContent = `${fmt(stats.matchesWon)}/${fmt(stats.matchesPlayed)}`;
   el.best.textContent = fmt(stats.bestBreak);
@@ -112,9 +116,22 @@ function paintStats(el, stats) {
     : `Only PvP matches earn reward points${cap ? `, up to ${cap} a day` : ''}.${pairCapHint()} Practice never earns.`;
 }
 
+/** The coin chip. Null: not known (no stats yet). Below zero reads in amber. */
+function paintCoins(el, coins) {
+  const known = typeof coins === 'number';
+  el.coinsValue.textContent = known ? fmt(coins) : '–';
+  el.coins.classList.toggle('neg', known && coins < 0);
+}
+
+/** After a purchase: the chip follows without re-reading every stat. */
+export function setLobbyCoins(coins) {
+  paintCoins(elements(), coins);
+}
+
 /** Stat placeholders while /stats is in flight, or after it fails. */
 function paintStatsUnavailable(el, note = 'Stats are unavailable — you can still play.') {
   for (const key of ['points', 'matches', 'best']) el[key].textContent = '–';
+  paintCoins(el, null);
   el.capValue.textContent = '–';
   el.capLine.className = 'cap-line';
   // Hidden rather than emptied: the fill animates, so a bar left on screen
@@ -150,8 +167,11 @@ function paintPracticeOnly(el) {
  * @param {() => void} opts.onPlay       find a PvP opponent
  * @param {() => void} opts.onPractice   start a practice frame
  * @param {() => void} opts.onRewards    open the existing wallet/claim screen
+ * @param {() => void} opts.onStore      open the store (the Store button and the coin chip)
  */
-export async function showLobby({ hud, me, onPlay, onPractice, onRewards }) {
+export async function showLobby({
+  hud, me, onPlay, onPractice, onRewards, onStore,
+}) {
   const el = elements();
 
   paintPlayer(el, me);
@@ -160,6 +180,8 @@ export async function showLobby({ hud, me, onPlay, onPractice, onRewards }) {
   setPlayButton({ label: 'PLAY', onClick: () => onPlay() });
   el.practice.onclick = () => onPractice();
   el.rewards.onclick = () => onRewards();
+  el.store.onclick = () => onStore();
+  el.coins.onclick = () => onStore();
   el.rules.onclick = () => rulesSheet(hud);
   el.settings.onclick = () => settingsSheet(hud);
 
@@ -228,6 +250,10 @@ function applyConnection(online) {
   el.offlineChip.hidden = online;
   el.offlineNote.hidden = online;
   el.rewards.disabled = !online;
+  // The balance and every purchase live on the server. Offline, the Offline
+  // chip takes the coin chip's place.
+  el.store.disabled = !online;
+  el.coins.hidden = !online;
   syncPlayButton();
 
   if (online) {

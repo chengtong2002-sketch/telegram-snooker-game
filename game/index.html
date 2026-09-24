@@ -97,6 +97,11 @@
                 <span class="lobby-name" id="lobby-name">Player</span>
                 <span class="lobby-sub" id="lobby-sub">Snooker</span>
               </div>
+              <!-- Coins, tapping through to the store. Offline, the Offline chip
+                   takes its place: the balance lives on the server. -->
+              <button class="coin-chip" id="lobby-coins" aria-label="Coins: open the store">
+                <svg class="coin" viewBox="0 0 20 20" aria-hidden="true"><use href="#coin-mark" /></svg><span id="lobby-coins-value">–</span>
+              </button>
               <span class="offline-chip" id="lobby-offline" hidden>⚠ Offline</span>
             </header>
 
@@ -127,6 +132,15 @@
             <button id="lobby-practice" class="lobby-btn">Practice</button>
 
             <div class="lobby-grid">
+              <!-- Outlined in the cue rings' gold, not filled: PLAY stays the
+                   only filled button. -->
+              <button id="lobby-store" class="lobby-btn">
+                <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"
+                        d="M5 8h14l-1.2 12H6.2z M9 8V6.5a3 3 0 0 1 6 0V8" />
+                </svg>
+                Store
+              </button>
               <button id="lobby-rewards" class="lobby-btn">
                 <!-- A token, in currentColor so it dims with the button offline. -->
                 <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -145,11 +159,42 @@
               </button>
             </div>
             <p class="offline-note" id="offline-note" hidden>
-              No connection — Practice still works. PvP and Rewards need one.
+              No connection — Practice still works. PvP, Rewards and the Store need one.
             </p>
           </div>
         </div>
       </section>
+
+      <!-- The store: a full screen of its own over the lobby, under #overlay so
+           the buy confirmation opens on top of it. Filled by store.js. -->
+      <section id="store" hidden>
+        <div class="store-inner">
+          <header class="store-head">
+            <button class="store-back" id="store-back" aria-label="Back">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M15 5l-7 7 7 7" /></svg>
+            </button>
+            <h2>Store</h2>
+            <span class="coin-chip static" id="store-coins"><svg class="coin" viewBox="0 0 20 20" aria-hidden="true"><use href="#coin-mark" /></svg><span id="store-coins-value">–</span></span>
+          </header>
+          <div class="store-tabs" role="tablist">
+            <button class="store-tab" role="tab" data-tab="cue">Cues</button>
+            <button class="store-tab" role="tab" data-tab="ball">Cue balls</button>
+            <button class="store-tab" role="tab" data-tab="coins">Coins</button>
+          </div>
+          <ul class="store-list" id="store-list"></ul>
+          <p class="store-note" id="store-note"></p>
+        </div>
+      </section>
+
+      <!-- One coin drawing, used by every coin icon on the page. -->
+      <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+        <symbol id="coin-mark" viewBox="0 0 20 20">
+          <circle cx="10" cy="10" r="9" fill="#8a6a24" />
+          <circle cx="10" cy="10" r="8.2" fill="#d4ad52" />
+          <circle cx="10" cy="10" r="5.4" fill="none" stroke="#8a6a24" stroke-width="1.3" />
+          <path d="M5 6.2a6 6 0 0 1 6.5-3" fill="none" stroke="#f6e2a8" stroke-width="1.1" stroke-linecap="round" />
+        </symbol>
+      </svg>
 
       <div id="overlay" hidden>
         <div class="sheet">

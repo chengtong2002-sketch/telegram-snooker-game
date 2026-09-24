@@ -6,9 +6,11 @@ const BASE = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:8080';
 let token = null;
 
 export class ApiError extends Error {
-  constructor(message, status) {
+  constructor(message, status, body = null) {
     super(message);
     this.status = status;
+    // The server's JSON, for callers that branch on its reason code (the store).
+    this.body = body;
     // 0 means "never reached the server", which is what the offline queue waits for.
     this.offline = status === 0;
   }
@@ -42,7 +44,7 @@ async function request(path, { method = 'GET', body, auth = true, timeout = 12_0
   } catch {
     throw new ApiError(`bad response from server (${res.status})`, res.status);
   }
-  if (!res.ok) throw new ApiError(json.error ?? `request failed (${res.status})`, res.status);
+  if (!res.ok) throw new ApiError(json.error ?? `request failed (${res.status})`, res.status, json);
   return json;
 }
 
@@ -105,3 +107,10 @@ export const rewardHistory = () => request('/rewards/history');
 export const rewardClaimable = () => request('/rewards/claimable');
 /** Claims every claimable period at once. */
 export const redeem = (requestId) => request('/rewards/redeem', { method: 'POST', body: { requestId } });
+
+/** Catalog with prices, owned and equipped, the balance, and the coin packs. */
+export const store = () => request('/store');
+/** Only the id is sent: the server prices the item. Answers with the whole store on success. */
+export const buyItem = (itemId) => request('/store/buy', { method: 'POST', body: { itemId } });
+/** @param {'cue'|'ball'} kind */
+export const equipItem = (kind, itemId) => request('/store/equip', { method: 'POST', body: { kind, itemId } });
