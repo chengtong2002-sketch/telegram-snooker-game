@@ -204,7 +204,10 @@ async function boot() {
 
   if (screen === 'lobby') {
     hud.hint('');
-    await openLobby(me);
+    // Back from a card payment (RM checkout → t.me/…?startapp=store_<orderId>):
+    // the lobby, with the store open on the coin packs following that order.
+    const store = params.screen === 'store' ? { tab: 'coins', orderId: params.orderId } : null;
+    await openLobby(me, { store });
     return;
   }
 
@@ -215,7 +218,7 @@ async function boot() {
  * The lobby. Navigation lives here rather than in lobby.js so matchmaking and
  * the landscape handover stay in one place.
  */
-async function openLobby(me) {
+async function openLobby(me, { store = null } = {}) {
   document.documentElement.dataset.screen = 'lobby';
   stopRejoinWatch();
   await showLobby({
@@ -226,17 +229,25 @@ async function openLobby(me) {
     // The wallet sheet opens over the lobby, which stays behind it; closing
     // just drops back with the numbers re-read in case a claim changed them.
     onRewards: () => openWalletScreen(hud, { onClose: () => refreshLobbyStats() }),
-    onStore: () => openStore({
-      hud,
-      onChange: ({ balance, equipped }) => {
-        setLobbyCoins(balance);
-        rememberEquipped(equipped);
-        skins.show(mySkinIds());
-      },
-      onClose: () => refreshLobbyStats(),
-    }),
+    onStore: () => openStoreOverLobby(),
   });
   offerRejoin(me);
+  if (store) openStoreOverLobby(store);
+}
+
+/** The store sheet over the lobby; the lobby's coin chip and the drawn skins follow it. */
+function openStoreOverLobby({ tab, orderId } = {}) {
+  return openStore({
+    hud,
+    tab,
+    orderId,
+    onChange: ({ balance, equipped }) => {
+      setLobbyCoins(balance);
+      rememberEquipped(equipped);
+      skins.show(mySkinIds());
+    },
+    onClose: () => refreshLobbyStats(),
+  });
 }
 
 /* ---------- Rejoin: a PvP match the player left is still running ---------- */

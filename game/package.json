@@ -14,6 +14,7 @@
     "smoke:offline": "node test/drive-offline.mjs",
     "smoke:store": "node test/drive-store.mjs",
     "smoke:quit": "node test/drive-quit.mjs",
+    "smoke:rm": "node test/drive-rm.mjs",
     "start": "serve -s dist --no-port-switching"
   },
   "dependencies": {

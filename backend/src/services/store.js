@@ -41,6 +41,7 @@ export async function storeView(userId) {
     })),
     packs: packsOnSale(),
     starsEnabled: config.store.starsEnabled,
+    rmEnabled: config.rm.enabled,
   };
 }
 

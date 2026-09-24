@@ -1,11 +1,13 @@
 import { migrate, closeDb, purgeExpiredChallenges } from '@snooker/db';
-import { config, assertProductionConfig } from './config.js';
+import { config, assertProductionConfig, assertPaymentsConfig } from './config.js';
 import { logger } from './logger.js';
 import { buildApp } from './app.js';
 import { sweepShotClocks } from './services/matchService.js';
 import { reconcileStars } from './services/stars.js';
+import { reconcileRm } from './services/rm/payments.js';
 
 assertProductionConfig(logger);
+assertPaymentsConfig(logger);
 if (process.env.SHOT_CLOCK_SECONDS && Number(process.env.SHOT_CLOCK_SECONDS) !== config.shotClockSeconds) {
   logger.warn(
     { SHOT_CLOCK_SECONDS: process.env.SHOT_CLOCK_SECONDS, shotClockSeconds: config.shotClockSeconds },
@@ -48,11 +50,19 @@ const starsReconciler = setInterval(() => {
 }, 5 * 60_000);
 starsReconciler.unref();
 
+// Revenue Monster only calls back on success: failures, expiry and refunds
+// are found by asking. Does nothing while RM is switched off.
+const rmReconciler = setInterval(() => {
+  reconcileRm().catch((err) => logger.error({ err: err.message }, 'rm reconcile failed'));
+}, 60_000);
+rmReconciler.unref();
+
 async function shutdown(signal) {
   logger.info({ signal }, 'shutting down');
   clearInterval(sweeper);
   clearInterval(challengeReaper);
   clearInterval(starsReconciler);
+  clearInterval(rmReconciler);
   server.close(async () => {
     await closeDb();
     process.exit(0);

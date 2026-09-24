@@ -1,3 +1,4 @@
+import { createPrivateKey, createPublicKey } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { config as loadEnv } from 'dotenv';
@@ -16,6 +17,8 @@ for (const dir of ['..', '../..']) {
 
 const num = (v, fallback) => (v === undefined || v === '' ? fallback : Number(v));
 const bool = (v, fallback = false) => (v === undefined ? fallback : /^(1|true|yes)$/i.test(v));
+// A PEM from one env line: Railway variables can't hold newlines, so \n escapes are accepted.
+const pem = (v) => (v ?? '').trim().replace(/\\n/g, '\n');
 
 export const config = {
   port: num(process.env.PORT, 8080),
@@ -80,6 +83,19 @@ export const config = {
     starsEnabled: bool(process.env.PAYMENTS_STARS_ENABLED, false),
   },
 
+  // Revenue Monster (MYR), sandbox only: the hosts are fixed in
+  // services/rm/client.js and nothing here can point them at production.
+  rm: {
+    enabled: bool(process.env.PAYMENTS_RM_ENABLED, false),
+    clientId: (process.env.RM_CLIENT_ID ?? '').trim(),
+    clientSecret: (process.env.RM_CLIENT_SECRET ?? '').trim(),
+    storeId: (process.env.RM_STORE_ID ?? '').trim(),
+    privateKey: pem(process.env.RM_PRIVATE_KEY),
+    serverPublicKey: pem(process.env.RM_SERVER_PUBLIC_KEY),
+    publicBackendUrl: (process.env.PUBLIC_BACKEND_URL ?? '').trim().replace(/\/+$/, ''),
+    returnAppUrl: (process.env.RM_RETURN_APP_URL ?? 'https://t.me/snookerPlayBot/play').trim().replace(/\/+$/, ''),
+  },
+
   telegram: {
     // Only tests point this elsewhere (a local stub of the Bot API).
     apiRoot: (process.env.TELEGRAM_API_ROOT ?? 'https://api.telegram.org').replace(/\/+$/, ''),
@@ -120,6 +136,45 @@ export function productionConfigProblems(cfg = config) {
     problems.push('TONCONNECT_ALLOWED_DOMAINS must name the game domain — empty accepts wallet proofs signed for any site');
   }
   return problems;
+}
+
+/**
+ * What is missing or broken for Revenue Monster, when it is switched on. Pure,
+ * for tests. Checked everywhere, not only when deployed: a half-configured
+ * payment provider fails closed at boot instead of at a player's first order.
+ */
+export function rmConfigProblems(rm = config.rm) {
+  if (!rm.enabled) return [];
+  const problems = [];
+  for (const [key, name] of [['clientId', 'RM_CLIENT_ID'], ['clientSecret', 'RM_CLIENT_SECRET'], ['storeId', 'RM_STORE_ID']]) {
+    if (!rm[key]) problems.push(`${name} is required when PAYMENTS_RM_ENABLED is on`);
+  }
+  try {
+    const key = createPrivateKey(rm.privateKey);
+    if (key.asymmetricKeyType !== 'rsa') problems.push('RM_PRIVATE_KEY must be an RSA key');
+  } catch {
+    problems.push('RM_PRIVATE_KEY must be our RSA private key as PEM');
+  }
+  try {
+    createPublicKey(rm.serverPublicKey);
+  } catch {
+    problems.push("RM_SERVER_PUBLIC_KEY must be Revenue Monster's server public key as PEM");
+  }
+  if (!/^https:\/\/[^/]+/.test(rm.publicBackendUrl)) {
+    problems.push('PUBLIC_BACKEND_URL must be the https address RM can reach this backend on');
+  }
+  if (!/^https:\/\/t\.me\/[^/]+\/[^/]+$/.test(rm.returnAppUrl)) {
+    problems.push('RM_RETURN_APP_URL must be a Mini App link like https://t.me/<bot>/<app>');
+  }
+  return problems;
+}
+
+export function assertPaymentsConfig(logger) {
+  const problems = rmConfigProblems();
+  if (problems.length) {
+    logger.error({ problems }, 'refusing to start: Revenue Monster is switched on but not configured');
+    process.exit(1);
+  }
 }
 
 export function assertProductionConfig(logger, env = process.env) {

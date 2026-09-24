@@ -717,7 +717,11 @@ html, body {
   color: var(--accent);
 }
 
-.item-pack { justify-content: space-between; }
+/* Two prices on a narrow phone drop under the amount rather than overflow the card. */
+.item-pack { justify-content: space-between; flex-wrap: wrap; row-gap: 10px; }
+.pack-prices { gap: 6px; margin-left: auto; }
+.pack-prices .item-btn { min-width: 0; padding: 0 11px; }
+.pack-amount span { white-space: nowrap; }
 .pack-amount { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 800; }
 .pack-amount .coin { width: 26px; height: 26px; }
 

@@ -6,6 +6,7 @@ import rateLimit from 'express-rate-limit';
 import { config } from './config.js';
 import { logger } from './logger.js';
 import routes, { internalRoutes } from './routes/index.js';
+import rmPublicRoutes from './routes/rmPublic.js';
 
 /** Build the Express app. Kept separate from index.js so tests can mount it. */
 export function buildApp({ requestLogging = true } = {}) {
@@ -13,6 +14,8 @@ export function buildApp({ requestLogging = true } = {}) {
 
   app.set('trust proxy', 1);
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+  // Before the JSON parser: RM's webhook is checked against its raw body.
+  app.use(rmPublicRoutes);
   app.use(express.json({ limit: '256kb' }));
   if (requestLogging) {
     app.use(pinoHttp({ logger, autoLogging: { ignore: (req) => req.url === '/api/health' } }));

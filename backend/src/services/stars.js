@@ -23,26 +23,16 @@ import { config } from '../config.js';
 import { logger } from '../logger.js';
 import { balanceOf, recordEntry } from './coins.js';
 import { callBotApi, TelegramApiError } from './telegramApi.js';
+import {
+  logEvent, orderLimitReason, OPEN_ORDER_LIMIT, DAILY_ORDER_LIMIT,
+} from './paymentOrders.js';
+
+export { OPEN_ORDER_LIMIT, DAILY_ORDER_LIMIT };
 
 /** How long an invoice can be paid for. After that pre-checkout refuses it. */
 export const STARS_ORDER_TTL_MS = 60 * 60 * 1000;
-/** Unpaid invoices one player can hold at once, and orders a day (docs/rm-payments-plan.md). */
-export const OPEN_ORDER_LIMIT = 3;
-export const DAILY_ORDER_LIMIT = 20;
 
 const newOrderId = () => `st${randomBytes(11).toString('hex')}`; // 24 characters, RM's limit too
-
-async function logEvent({
-  orderId = null, source, event, payload = null, outcome = null,
-}, db = getDb()) {
-  await db('payment_events').insert({
-    order_id: orderId,
-    source,
-    event,
-    payload: payload == null ? null : JSON.stringify(payload).slice(0, 4000),
-    outcome,
-  });
-}
 
 const packFor = (packId) => config.store.packs.find((p) => p.id === packId && p.stars > 0) ?? null;
 
@@ -60,18 +50,11 @@ export async function createStarsInvoice(userId, packId) {
   const pack = packFor(packId);
   if (!pack) return { status: 'unknown_pack' };
 
+  const limit = await orderLimitReason(userId, 'stars');
+  if (limit) return { status: limit };
+
   const db = getDb();
   const now = new Date();
-  const open = await db('payment_orders')
-    .where({ user_id: userId, provider: 'stars', status: 'pending' })
-    .where('expires_at', '>', now)
-    .count({ n: '*' }).first();
-  if (Number(open.n) >= OPEN_ORDER_LIMIT) return { status: 'too_many_open' };
-  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const daily = await db('payment_orders')
-    .where({ user_id: userId }).where('created_at', '>=', today)
-    .count({ n: '*' }).first();
-  if (Number(daily.n) >= DAILY_ORDER_LIMIT) return { status: 'daily_limit' };
 
   const orderId = newOrderId();
   await db('payment_orders').insert({

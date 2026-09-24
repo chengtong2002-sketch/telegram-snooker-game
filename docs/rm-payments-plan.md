@@ -1,7 +1,8 @@
 # Revenue Monster payments (sandbox) — plan
 
 **Status:** decisions 1–4 taken by the user 2026-09-23 (below); decision 5 (sandbox account) still open.
-**Order: the store is built on these coin tables first (Oct 10 target); the RM provider comes after.** Nothing built.
+**Built 2026-09-24: phases 1–4, against a fake RM.** Phase 0 (a real sandbox account) is the only thing left,
+and it must tick every box in "Phase 0 checklist" at the end before the flag is switched on anywhere.
 **Scope:** buy coin packs with MYR through Revenue Monster's hosted web checkout, **sandbox only**,
 behind `PAYMENTS_RM_ENABLED` (default off everywhere). Telegram Stars stays in the design as the
 second provider behind the same order and ledger tables.
@@ -150,3 +151,65 @@ order is still open and the price matches; `successful_payment` → bot forwards
 The store slice (buy/equip with coins, Stars) targets Oct 10. This work adds about 5 days on top of it.
 Either the RM work goes after the store, or the store is built on these tables first (phases 1–2 above
 minus the RM client), with RM added once the store works.
+
+## As built (2026-09-24)
+
+Code: `backend/src/services/rm/client.js` (REST, signing, token), `backend/src/services/rm/payments.js`
+(orders, webhook, reconciler, refunds), `backend/src/routes/rmPublic.js` (`/webhooks/rm`),
+`POST /api/payments/rm/orders`, `GET /api/payments/orders/:id`, `npm run refund:rm -w @snooker/backend`,
+the bot's `coins-added` notify, and the store's MYR buttons (`game/src/store.js`). Tests:
+`backend/test/rmPayments.test.js` (22, SQLite and Postgres) and `npm run smoke:rm -w @snooker/game`
+(14 checks, needs only vite).
+
+The rules, as set by the user on 2026-09-24 (they replace sections 4.3–4.5 above where they differ):
+
+- **Checkout:** `POST /v3/payment/online`, `type: MOBILE_PAYMENT`, `layoutVersion: v4`, amount in cents
+  (sen), `order.id` = `rm` + 22 hex (24 characters), body sorted and signed per RM's Signature Algorithm.
+- **`redirectUrl` = `https://t.me/snookerPlayBot/play?startapp=store_<orderId>`**: RM sends the player
+  straight back into the Mini App's store, which follows the order. Any status RM adds to that trip is
+  display-only; nothing reads it. There is no backend return page.
+- **`notifyUrl` = `PUBLIC_BACKEND_URL/webhooks/rm`.**
+- **Coins are credited ONLY by the verified webhook**: RM's signature must verify, the status must be
+  SUCCESS, and the amount and currency must be the order's (otherwise the order is `disputed`, no coins).
+  Idempotent on RM's transaction id (ledger ref `rm:<transactionId>`, UNIQUE). A late webhook for an order
+  we had expired still credits: the money was taken.
+- **The reconciler never credits.** It closes failed/cancelled/expired orders and takes refunds back. If
+  RM's query says SUCCESS and no webhook has credited it, the order stays `pending` (not expired) and the
+  event `paid_awaiting_webhook` is logged, with a `logger.error` after 15 minutes for a person to act
+  (RM retries the webhook; the fix otherwise is to have RM resend it).
+- **The Mini App's poll is read-only**: it reads our order row and never asks RM.
+- **`PAYMENTS_RM_ENABLED` stays false in production.**
+
+Other details:
+
+- **Callback signatures are accepted with or without requestUrl** in the signed text (RM's docs say it
+  "can be" left out). Either form is RM's key over our exact body, nonce and time.
+- **Owner alerts are `logger.error` lines** ("rm payment needs a person", "order we do not have"). No other
+  alert channel exists yet.
+- **Reconciler every 60 s** (its own interval): open orders older than 2 min, paid orders from the last
+  30 days once a day.
+- **REVERSED** counts as a full refund. **Partial refunds** take back ceil(coins × refunded ÷ price), each
+  new refunded total debiting only the difference (ref `rm-refund:<txn>:<total>`).
+- A payment refunded before we ever credited it adds and takes nothing (order `refunded`).
+
+## Phase 0 checklist (needs the sandbox account)
+
+Each of these is an assumption in the code, taken from RM's docs, its PHP plugin or its JS SDK where
+they disagree. Check each one on the sandbox and fix the code if it is wrong:
+
+1. `X-Timestamp` is UNIX **seconds** (docs and the PHP plugin; the JS SDK sends milliseconds).
+2. Our request signature is accepted: create one checkout by hand with `client.js`.
+3. A real webhook verifies, and whether its signed text includes `requestUrl`. Its body carries
+   `data.status`, `data.transactionId`, `data.order.{id,amount}` and `currencyType` (in `data` or
+   `data.order`): the credit reads exactly these. Whether a MOBILE_PAYMENT checkout notifies the same way.
+4. Query by order id: `GET /v3/payment/transaction/order/{id}` answers `item.status`, `item.transactionId`,
+   `item.order.{id,amount}` and `currencyType` (top level or in `order`); and what it answers before anyone
+   pays (the code treats HTTP 404 or a `*NOT_FOUND` code as "no payment").
+5. After a **partial** refund, which field holds the refunded amount (`refundedAmount`? `balanceAmount`?).
+   Until confirmed, an unreadable partial refund is logged as `refund_unknown` and debits nothing.
+6. The status words: SUCCESS, FAILED, CANCELLED, EXPIRED, IN_PROCESS, FULL_REFUNDED, PARTIAL_REFUNDED, REVERSED.
+7. The checkout's lifetime (the order expires on our side after 60 min + 10 min grace).
+8. RM accepts a `t.me` link as `redirectUrl`, and what it appends to it (`&orderId=…&status=…`?) still
+   opens the Mini App with `startapp=store_<orderId>` intact.
+9. The refund body: `{transactionId, refund: {type: FULL|PARTIAL, currencyType: MYR, amount}, reason}`.
+10. RM's PHP signer also escapes `'`; ours does not, so no field we send may hold an apostrophe (a test checks it).

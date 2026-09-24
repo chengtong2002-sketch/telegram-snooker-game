@@ -331,6 +331,7 @@ npm test -w @snooker/token            # settlement: no double-send, no overspend
 npm run smoke:game                    # drives a practice frame in a real browser
 npm run smoke:concede -w @snooker/game   # both PvP concede paths, two players at once
 npm run smoke:offline -w @snooker/game   # the offline story; practice makes no requests
+npm run smoke:rm -w @snooker/game        # card payments (RM) in the store; needs only vite
 ```
 
 The smokes are separate because they each need the backend and vite running plus
@@ -345,6 +346,10 @@ the backend at a throwaway `DATABASE_URL`, never the dev database.
 `smoke:offline` drops and restores the connection around the lobby and a
 practice frame, counting every `/api` request so a practice frame that quietly
 phones home fails the run.
+`smoke:rm` is the exception: it answers every `/api` call itself, so it needs only
+vite. It drives the store side of a Revenue Monster payment (open the checkout,
+wait, get the coins; come back from RM's page into the store) and the price
+buttons at 320 wide. The backend side is `backend/test/rmPayments.test.js`.
 
 The unit suite covers the things that would actually cost money if they broke:
 the budget can't be overspent, a player can't exceed their share cap, a

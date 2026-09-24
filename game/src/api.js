@@ -117,3 +117,7 @@ export const equipItem = (kind, itemId) => request('/store/equip', { method: 'PO
 
 /** A Stars invoice for one coin pack. Only the pack id is sent: the server prices it. */
 export const starsInvoice = (packId) => request('/payments/stars/invoice', { method: 'POST', body: { packId } });
+/** A Revenue Monster checkout (MYR) for one coin pack: { orderId, url }. The server prices it. */
+export const rmOrder = (packId) => request('/payments/rm/orders', { method: 'POST', body: { packId } });
+/** One of this player's coin orders: { status, coins, balance, ... }. Asking also nudges the server to check RM. */
+export const paymentOrder = (orderId) => request(`/payments/orders/${encodeURIComponent(orderId)}`);
