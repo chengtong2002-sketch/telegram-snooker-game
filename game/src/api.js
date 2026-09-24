@@ -131,6 +131,10 @@ export const redeem = (requestId) => request('/rewards/redeem', { method: 'POST'
 
 /** Catalog with prices, owned and equipped, the balance, and the coin packs. */
 export const store = () => request('/store');
+/** Owned cues and cue balls (Starter included), each with equipped / acquiredAt. */
+export const inventory = () => request('/store/inventory');
+/** One page of coin history, newest first; pass the previous page's `next` as `before`. */
+export const coinHistory = (before = null) => request(`/store/history${before ? `?before=${before}` : ''}`);
 /** Only the id is sent: the server prices the item. Answers with the whole store on success. */
 export const buyItem = (itemId) => request('/store/buy', { method: 'POST', body: { itemId } });
 /** @param {'cue'|'ball'} kind */

@@ -333,6 +333,7 @@ npm run smoke:concede -w @snooker/game   # both PvP concede paths, two players a
 npm run smoke:offline -w @snooker/game   # the offline story; practice makes no requests
 npm run smoke:rm -w @snooker/game        # card payments (RM) in the store; needs only vite
 npm run smoke:aim -w @snooker/game       # live aim: two browsers, plus the practice AI lining up
+npm run smoke:inventory -w @snooker/game # the Inventory tab; DATABASE_URL = the backend's throwaway DB
 ```
 
 The smokes are separate because they each need the backend and vite running plus

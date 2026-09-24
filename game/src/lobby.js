@@ -27,6 +27,7 @@ function elements() {
       root: $('lobby'),
       avatar: $('lobby-avatar'),
       name: $('lobby-name'),
+      who: $('lobby-who'),
       sub: $('lobby-sub'),
       points: $('stat-points'),
       matches: $('stat-matches'),
@@ -168,9 +169,10 @@ function paintPracticeOnly(el) {
  * @param {() => void} opts.onPractice   start a practice frame
  * @param {() => void} opts.onRewards    open the existing wallet/claim screen
  * @param {() => void} opts.onStore      open the store (the Store button and the coin chip)
+ * @param {() => void} [opts.onInventory] open the Inventory (tapping the avatar or the name)
  */
 export async function showLobby({
-  hud, me, onPlay, onPractice, onRewards, onStore,
+  hud, me, onPlay, onPractice, onRewards, onStore, onInventory = onStore,
 }) {
   const el = elements();
 
@@ -182,6 +184,17 @@ export async function showLobby({
   el.rewards.onclick = () => onRewards();
   el.store.onclick = () => onStore();
   el.coins.onclick = () => onStore();
+  // The player card is the way to what you own: the avatar and the name both
+  // open it. It needs the server like the Store does, so offline it does nothing.
+  const openInventory = () => { if (!el.store.disabled) onInventory(); };
+  el.avatar.onclick = openInventory;
+  el.who.onclick = openInventory;
+  el.who.onkeydown = (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      openInventory();
+    }
+  };
   el.rules.onclick = () => rulesSheet(hud);
   el.settings.onclick = () => settingsSheet(hud);
 
@@ -254,6 +267,7 @@ function applyConnection(online) {
   // chip takes the coin chip's place.
   el.store.disabled = !online;
   el.coins.hidden = !online;
+  el.who.setAttribute('aria-disabled', String(!online));
   syncPlayButton();
 
   if (online) {

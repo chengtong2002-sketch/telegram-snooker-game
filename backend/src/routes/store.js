@@ -3,6 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { requireAuth } from '../auth.js';
 import { buyItem } from '../services/coins.js';
 import { storeView, equipItem } from '../services/store.js';
+import { inventoryView, coinHistory, HISTORY_PAGE_MAX } from '../services/inventory.js';
 
 const router = Router();
 
@@ -49,6 +50,28 @@ router.post('/buy', buyLimiter, async (req, res) => {
   const code = BUY_HTTP[result.status] ?? 500;
   if (code !== 200) return res.status(code).json({ ...result, error: BUY_ERRORS[result.status] });
   return res.json({ ...result, store: await storeView(req.user.id) });
+});
+
+/** Owned cues and cue balls (Starter items included), with what is equipped. Read only. */
+router.get('/inventory', async (req, res) => {
+  res.json(await inventoryView(req.user.id));
+});
+
+/**
+ * The coin history, newest first. ?before=<id> is the previous page's
+ * `next`; ?limit= up to HISTORY_PAGE_MAX. Anything else is a 400.
+ */
+router.get('/history', async (req, res) => {
+  const { before, limit } = req.query;
+  const int = (v) => (typeof v === 'string' && /^[1-9][0-9]{0,15}$/.test(v) ? Number(v) : NaN);
+  if (before !== undefined && !Number.isSafeInteger(int(before))) return res.status(400).json({ error: 'before must be a ledger id' });
+  if (limit !== undefined && !(int(limit) <= HISTORY_PAGE_MAX)) {
+    return res.status(400).json({ error: `limit must be 1 to ${HISTORY_PAGE_MAX}` });
+  }
+  return res.json(await coinHistory(req.user.id, {
+    before: before === undefined ? null : int(before),
+    limit: limit === undefined ? undefined : int(limit),
+  }));
 });
 
 router.post('/equip', async (req, res) => {

@@ -230,6 +230,7 @@ async function openLobby(me, { store = null } = {}) {
     // just drops back with the numbers re-read in case a claim changed them.
     onRewards: () => openWalletScreen(hud, { onClose: () => refreshLobbyStats() }),
     onStore: () => openStoreOverLobby(),
+    onInventory: () => openStoreOverLobby({ tab: 'inventory' }),
   });
   offerRejoin(me);
   if (store) openStoreOverLobby(store);

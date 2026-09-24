@@ -645,7 +645,7 @@ html, body {
 .store-back:active { background: rgba(255,255,255,.09); }
 
 .store-tabs {
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px;
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;
   padding: 4px;
   border-radius: 14px;
   background: rgba(0,0,0,.35);
@@ -726,6 +726,53 @@ html, body {
 .pack-amount .coin { width: 26px; height: 26px; }
 
 .store-empty { padding: 28px 8px; text-align: center; color: var(--muted); font-size: 13px; }
+
+/* ---------- inventory (the store's 4th tab) ---------- */
+
+.inv-head {
+  margin: 8px 2px -2px;
+  font-size: 11px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase;
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+
+/* The equipped cue lined up on the equipped cue ball, tip to ball. */
+.inv-setup { flex-direction: column; align-items: stretch; gap: 10px; border-color: rgba(53,196,138,.45); }
+.inv-setup-pic { display: flex; align-items: center; gap: 0; }
+.inv-setup-pic .cue-preview { flex: 1 1 auto; min-width: 0; width: auto; }
+.inv-setup-pic .ball-preview { width: 40px; height: 40px; margin-left: 3px; }
+
+.inv-empty { justify-content: space-between; }
+.inv-empty-text { color: var(--muted); font-size: 14px; font-weight: 700; }
+
+.inv-history {
+  padding: 4px 12px 12px;
+  border-radius: 14px;
+  background: #13201b;
+  border: 1px solid rgba(146,190,168,.11);
+  display: flex; flex-direction: column; gap: 10px;
+  flex: 0 0 auto;
+}
+.inv-tx-list { list-style: none; margin: 0; padding: 0; }
+.inv-tx {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(146,190,168,.09);
+}
+.inv-tx:last-child { border-bottom: none; }
+.inv-tx-what, .inv-tx-amount { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.inv-tx-amount { align-items: flex-end; flex: 0 0 auto; }
+.inv-tx-label { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.inv-tx-when, .inv-tx-after { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.inv-tx-delta { font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.inv-tx-delta.up { color: var(--accent); }
+.inv-tx-delta.down { color: var(--text); }
+.inv-more { align-self: center; }
+
+/* Tapping the player card opens the Inventory. */
+.lobby-avatar, .lobby-who { cursor: pointer; }
+.lobby-who[aria-disabled="true"] { cursor: default; }
+.lobby-who:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
 
 .store-note {
   margin: 10px 2px calc(14px + var(--safe-b));

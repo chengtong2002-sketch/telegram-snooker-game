@@ -14,6 +14,9 @@ import { itemSvg, svgDataUrl } from './skinLoader.js';
 import {
   showBackButton, haptic, canPayInvoices, openInvoice, openExternal,
 } from './telegram.js';
+import {
+  historyLabel, formatDelta, formatWhen, ownedByKind, equippedPair,
+} from './inventory.js';
 
 const $ = (id) => document.getElementById(id);
 const fmt = (n) => Number(n ?? 0).toLocaleString('en');
@@ -67,7 +70,7 @@ let session = null;
  *
  * @param {object} opts
  * @param {import('./hud.js').Hud} opts.hud
- * @param {'cue'|'ball'|'coins'} [opts.tab]
+ * @param {'cue'|'ball'|'coins'|'inventory'} [opts.tab]
  * @param {string} [opts.orderId] a card payment to follow (back from RM's checkout)
  * @param {(change: {balance: number, equipped?: object}) => void} [opts.onChange]
  *        after every server answer, so the lobby chip and the drawn skins follow
@@ -77,7 +80,11 @@ export async function openStore({
   hud, tab = 'cue', orderId = null, onChange, onClose,
 } = {}) {
   const el = elements();
-  session = { hud, tab, data: null, busy: false, onChange, onClose };
+  session = {
+    hud, tab, data: null, busy: false, onChange, onClose,
+    // The Inventory tab's own reads, fetched when it is first shown.
+    inv: null, invError: null, hist: null, histBusy: false,
+  };
   session.hideBack = showBackButton(closeStore);
   el.back.onclick = closeStore;
   for (const button of el.tabs) button.onclick = () => selectTab(button.dataset.tab);
@@ -112,6 +119,10 @@ async function reload() {
 /** Take the server's store as the truth and redraw. */
 function adopt(data) {
   if (!session) return;
+  // Owned and equipped may have moved: the inventory is re-read when next shown,
+  // and the history too if the balance changed.
+  if (session.data && session.data.balance !== data.balance) session.hist = null;
+  session.inv = null;
   session.data = data;
   session.error = null;
   session.onChange?.({ balance: data.balance, equipped: data.equipped });
@@ -121,8 +132,46 @@ function adopt(data) {
 function selectTab(tab) {
   if (!session) return;
   session.tab = tab;
+  if (tab === 'inventory') session.invError = null; // coming back to it retries a failed load
   elements().list.scrollTop = 0;
   paint();
+}
+
+/** The Inventory tab's data: owned items and the first page of history. */
+async function loadInventory() {
+  const s = session;
+  if (!s || s.invLoading) return;
+  s.invLoading = true;
+  try {
+    const [inv, hist] = await Promise.all([api.inventory(), s.hist ? null : api.coinHistory()]);
+    if (s !== session) return;
+    s.inv = inv;
+    s.invError = null;
+    if (hist) s.hist = hist;
+  } catch (err) {
+    if (s !== session) return;
+    s.invError = err.offline ? 'No connection. The inventory needs one.' : `Could not load your inventory: ${err.message}`;
+  } finally {
+    s.invLoading = false;
+  }
+  if (s === session && s.tab === 'inventory') paint();
+}
+
+async function loadMoreHistory() {
+  const s = session;
+  if (!s?.hist?.next || s.histBusy) return;
+  s.histBusy = true;
+  paint();
+  try {
+    const page = await api.coinHistory(s.hist.next);
+    if (s !== session) return;
+    s.hist = { entries: [...s.hist.entries, ...page.entries], next: page.next };
+  } catch (err) {
+    if (s === session) s.hud.toast(err.offline ? 'No connection.' : err.message, 'foul', 3000);
+  } finally {
+    s.histBusy = false;
+    if (s === session) paint();
+  }
 }
 
 /* ---------- drawing ---------- */
@@ -143,6 +192,11 @@ function paint() {
   if (!data) {
     el.list.replaceChildren(node('li', 'store-empty', error ?? 'Loading…'));
     el.note.textContent = '';
+    return;
+  }
+
+  if (tab === 'inventory') {
+    paintInventory(el);
     return;
   }
 
@@ -246,6 +300,87 @@ function payNote(data) {
   if (data?.rmEnabled && stars) return 'Pay with Telegram Stars, or in ringgit by card or e-wallet. Purchases are final; see /terms in the bot.';
   if (data?.rmEnabled) return 'Paid in ringgit by card or e-wallet, on a secure payment page. Purchases are final; see /terms in the bot.';
   return starsNote(data) ?? 'Paid with Telegram Stars. Purchases are final; see /terms in the bot.';
+}
+
+/* ---------- inventory ---------- */
+
+function sectionHead(text) {
+  return node('li', 'inv-head', text);
+}
+
+/** The equipped cue lined up on the equipped cue ball, as the table draws them. */
+function setupCard(inv) {
+  const { cue, ball } = equippedPair(inv);
+  const li = node('li', 'store-item inv-setup');
+  const pic = node('div', 'inv-setup-pic');
+  if (cue) pic.append(preview(cue));
+  if (ball) pic.append(preview(ball));
+  const names = node('div', 'item-meta');
+  names.append(
+    node('span', 'tier', 'Your setup'),
+    node('span', 'item-name', [cue?.name, ball?.name].filter(Boolean).join(' · ')),
+  );
+  li.append(pic, names);
+  return li;
+}
+
+function emptyCard() {
+  const li = node('li', 'store-item inv-empty');
+  li.append(node('span', 'inv-empty-text', 'No items yet'));
+  const go = node('button', 'item-btn buy', 'Visit the store');
+  go.onclick = () => selectTab('cue');
+  li.append(go);
+  return li;
+}
+
+function historyRow(entry) {
+  const li = node('li', 'inv-tx');
+  const what = node('div', 'inv-tx-what');
+  what.append(node('span', 'inv-tx-label', historyLabel(entry)), node('span', 'inv-tx-when', formatWhen(entry.at)));
+  const amount = node('div', 'inv-tx-amount');
+  amount.append(
+    node('span', `inv-tx-delta ${entry.delta > 0 ? 'up' : 'down'}`, formatDelta(entry.delta)),
+    node('span', 'inv-tx-after', `Balance ${fmt(entry.balanceAfter)}`),
+  );
+  li.append(what, amount);
+  return li;
+}
+
+function paintInventory(el) {
+  const s = session;
+  if (!s.inv) {
+    el.list.replaceChildren(node('li', 'store-empty', s.invError ?? 'Loading…'));
+    el.note.textContent = '';
+    if (!s.invError) loadInventory();
+    return;
+  }
+  const inv = s.inv;
+  const owned = ownedByKind(inv.items);
+  // Everything owned is equippable here, so itemRow never shows a price.
+  const row = (item) => itemRow({ ...item, owned: true, price: 0 });
+  const rows = [setupCard(inv)];
+  if (inv.boughtCount === 0) rows.push(emptyCard());
+  rows.push(sectionHead('Cues'), ...owned.cue.map(row), sectionHead('Cue balls'), ...owned.ball.map(row));
+
+  rows.push(sectionHead('Coin history'));
+  const entries = s.hist?.entries ?? [];
+  if (!s.hist) rows.push(node('li', 'store-empty', 'Loading…'));
+  else if (entries.length === 0) rows.push(node('li', 'store-empty', 'No coin activity yet.'));
+  else {
+    const box = node('li', 'inv-history');
+    const list = node('ul', 'inv-tx-list');
+    list.append(...entries.map(historyRow));
+    box.append(list);
+    if (s.hist.next) {
+      const more = node('button', 'item-btn inv-more', s.histBusy ? 'Loading…' : 'Show older');
+      more.disabled = s.histBusy;
+      more.onclick = loadMoreHistory;
+      box.append(more);
+    }
+    rows.push(box);
+  }
+  el.list.replaceChildren(...rows);
+  el.note.textContent = 'Everything here is yours for good. Your equipped cue and cue ball are what your opponent sees on your turns.';
 }
 
 /* ---------- actions ---------- */
@@ -474,7 +609,16 @@ async function equipItem(item) {
       equipped: res.equipped,
       items: s.data.items.map((i) => ({ ...i, equipped: res.equipped[i.kind] === i.id })),
     };
-    adopt(data);
+    const inv = s.inv && {
+      ...s.inv,
+      equipped: res.equipped,
+      items: s.inv.items.map((i) => ({ ...i, equipped: res.equipped[i.kind] === i.id })),
+    };
+    // Only the equipped marks moved: update both views in place, no re-read.
+    s.data = data;
+    s.inv = inv;
+    s.onChange?.({ balance: data.balance, equipped: data.equipped });
+    paint();
     s.hud.toast(`${item.name} equipped`, 'good', 2200);
   } catch (err) {
     if (s !== session) return;

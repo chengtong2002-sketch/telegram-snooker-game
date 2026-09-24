@@ -92,8 +92,8 @@
                instead of floating loose on it. -->
           <div class="lobby-card">
             <header class="lobby-head">
-              <div class="avatar lobby-avatar" id="lobby-avatar">?</div>
-              <div class="lobby-who">
+              <div class="avatar lobby-avatar" id="lobby-avatar" aria-hidden="true">?</div>
+              <div class="lobby-who" id="lobby-who" role="button" tabindex="0" aria-label="Your inventory">
                 <span class="lobby-name" id="lobby-name">Player</span>
                 <span class="lobby-sub" id="lobby-sub">Snooker</span>
               </div>
@@ -180,6 +180,7 @@
             <button class="store-tab" role="tab" data-tab="cue">Cues</button>
             <button class="store-tab" role="tab" data-tab="ball">Cue balls</button>
             <button class="store-tab" role="tab" data-tab="coins">Coins</button>
+            <button class="store-tab" role="tab" data-tab="inventory">Inventory</button>
           </div>
           <ul class="store-list" id="store-list"></ul>
           <p class="store-note" id="store-note"></p>
