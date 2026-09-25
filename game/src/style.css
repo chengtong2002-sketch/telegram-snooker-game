@@ -285,7 +285,9 @@ html, body {
   border: 1px solid var(--line);
   padding: 8px 14px; border-radius: 10px;
   font-size: 13px; font-weight: 600;
-  z-index: 20; pointer-events: none;
+  /* Above the store (35) and the modal scrim (40): a toast is often the only
+     answer to a tap there, and under the store it was invisible (Sep 25). */
+  z-index: 45; pointer-events: none;
   max-width: 80vw; text-align: center;
 }
 #toast.foul { border-color: var(--danger); color: #ffd9d4; }

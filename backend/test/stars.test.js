@@ -240,19 +240,54 @@ test('a payment the bot never passed on is credited by the reconciler, once', as
   botApi.transactions = [];
 });
 
+test('tapping a pack again reopens its unpaid invoice instead of making another', async () => {
+  const p = await player();
+  botApi.calls.length = 0;
+  const first = await invoice(p, 'coins-100');
+  const again = [];
+  for (let i = 0; i < OPEN_ORDER_LIMIT + 2; i += 1) again.push(await invoice(p, 'coins-100'));
+  for (const res of again) {
+    assert.equal(res.status, 200, 'never refused: the Sep 25 phone bug');
+    assert.equal(res.body.orderId, first.body.orderId);
+    assert.equal(res.body.invoiceLink, first.body.invoiceLink);
+  }
+  assert.equal(botApi.calls.filter((c) => c.method === 'createInvoiceLink').length, 1);
+  assert.equal(Number((await getDb()('payment_orders').where({ user_id: p.userId }).count({ n: '*' }).first()).n), 1);
+
+  // Another pack is its own invoice.
+  assert.notEqual((await invoice(p, 'coins-550')).body.orderId, first.body.orderId);
+
+  // Close to expiry, paid, or at a changed price: a fresh invoice.
+  await getDb()('payment_orders').where({ id: first.body.orderId }).update({ expires_at: new Date(Date.now() + 60_000) });
+  const late = await invoice(p, 'coins-100');
+  assert.notEqual(late.body.orderId, first.body.orderId, 'one minute left is too little to pay in');
+  await getDb()('payment_orders').where({ id: late.body.orderId }).update({ status: 'paid' });
+  const afterPaid = await invoice(p, 'coins-100');
+  assert.notEqual(afterPaid.body.orderId, late.body.orderId, 'a paid invoice is never offered again');
+  await getDb()('payment_orders').where({ id: afterPaid.body.orderId }).update({ amount: 1 });
+  assert.notEqual((await invoice(p, 'coins-100')).body.orderId, afterPaid.body.orderId, 'the price changed');
+});
+
 test('unpaid invoices expire, and a player can hold only a few open at once', async () => {
   const p = await player();
-  const ids = [];
-  for (let i = 0; i < OPEN_ORDER_LIMIT; i += 1) ids.push((await invoice(p)).body.orderId);
-  const over = await invoice(p);
-  assert.equal(over.status, 429);
-  assert.equal(over.body.status, 'too_many_open');
+  const saved = config.store.packs;
+  // More packs than the limit, since tapping one pack again reuses its invoice.
+  config.store.packs = [...saved, { id: 'coins-5', coins: 5, stars: 5, myrSen: null }];
+  try {
+    const ids = [];
+    for (const pack of config.store.packs.slice(0, OPEN_ORDER_LIMIT)) ids.push((await invoice(p, pack.id)).body.orderId);
+    const over = await invoice(p, config.store.packs[OPEN_ORDER_LIMIT].id);
+    assert.equal(over.status, 429);
+    assert.equal(over.body.status, 'too_many_open');
 
-  await getDb()('payment_orders').whereIn('id', ids).update({ expires_at: new Date(Date.now() - 11 * 60_000) });
-  const { expired } = await reconcileStars();
-  assert.ok(expired >= OPEN_ORDER_LIMIT);
-  assert.equal((await getDb()('payment_orders').where({ id: ids[0] }).first()).status, 'expired');
-  assert.equal((await invoice(p)).status, 200, 'expired ones no longer count as open');
+    await getDb()('payment_orders').whereIn('id', ids).update({ expires_at: new Date(Date.now() - 11 * 60_000) });
+    const { expired } = await reconcileStars();
+    assert.ok(expired >= OPEN_ORDER_LIMIT);
+    assert.equal((await getDb()('payment_orders').where({ id: ids[0] }).first()).status, 'expired');
+    assert.equal((await invoice(p, config.store.packs[OPEN_ORDER_LIMIT].id)).status, 200, 'expired ones no longer count as open');
+  } finally {
+    config.store.packs = saved;
+  }
 });
 
 test('Telegram refusing the invoice marks the order failed and credits nothing', async () => {

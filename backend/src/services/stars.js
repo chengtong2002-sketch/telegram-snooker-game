@@ -31,6 +31,8 @@ export { OPEN_ORDER_LIMIT, DAILY_ORDER_LIMIT };
 
 /** How long an invoice can be paid for. After that pre-checkout refuses it. */
 export const STARS_ORDER_TTL_MS = 60 * 60 * 1000;
+/** An open invoice is offered again only with this long left, so it cannot lapse mid-payment. */
+const REUSE_MIN_LEFT_MS = 5 * 60 * 1000;
 
 const newOrderId = () => `st${randomBytes(11).toString('hex')}`; // 24 characters, RM's limit too
 
@@ -60,11 +62,31 @@ export async function createStarsInvoice(userId, packId) {
   const pack = packFor(packId);
   if (!pack) return { status: 'unknown_pack' };
 
-  const limit = await orderLimitReason(userId, 'stars');
-  if (limit) return { status: limit };
-
   const db = getDb();
   const now = new Date();
+
+  // An unpaid invoice for this pack, at today's price, with time left: open it
+  // again rather than make another. Telegram lets a link be opened until it is
+  // paid, and pre-checkout accepts it only while the order is pending. Without
+  // this, a player whose payment form would not open (Telegram Desktop) used up
+  // the open-invoice limit in three taps, and every later tap was refused.
+  const open = await db('payment_orders')
+    .where({
+      user_id: userId, provider: 'stars', pack_id: pack.id, status: 'pending', amount: pack.stars,
+    })
+    .where('expires_at', '>', new Date(now.getTime() + REUSE_MIN_LEFT_MS))
+    .whereNotNull('provider_checkout_id')
+    .orderBy('created_at', 'desc')
+    .first();
+  if (open && /^https:\/\/t\.me\/\S+$/.test(open.provider_checkout_id)) {
+    await logEvent({ orderId: open.id, source: 'api', event: 'invoice', outcome: 'reused', payload: { packId: pack.id } });
+    return {
+      status: 'created', orderId: open.id, invoiceLink: open.provider_checkout_id, coins: pack.coins, stars: pack.stars,
+    };
+  }
+
+  const limit = await orderLimitReason(userId, 'stars');
+  if (limit) return { status: limit };
 
   const orderId = newOrderId();
   await db('payment_orders').insert({
