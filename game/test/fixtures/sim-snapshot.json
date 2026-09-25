@@ -150,10 +150,10 @@
     "SHOT_CLOCK_MS": 30000,
     "SPIN": {
       "maxOffset": 0.8,
-      "topGain": 1,
+      "topGain": 1.25,
       "followScale": 1,
       "sideGain": 1.25,
-      "slipDecel": 90,
+      "slipDecel": 45,
       "rollEps": 0.5,
       "sideDecay": 0.35,
       "cushionGrip": 0.18,
@@ -1504,42 +1504,42 @@
   },
   "spinShots": {
     "draw": {
-      "steps": 2347,
+      "steps": 2378,
       "balls": [
         {
           "id": "cue",
-          "x": 110.2909,
+          "x": 66.7525,
           "y": 88.9
         },
         {
           "id": "red1",
-          "x": 118.157,
+          "x": 105.5911,
           "y": 88.9
         }
       ]
     },
     "follow": {
-      "steps": 1783,
+      "steps": 1848,
       "balls": [
         {
           "id": "cue",
-          "x": 262.124,
+          "x": 255.9235,
           "y": 88.9
         },
         {
           "id": "red1",
-          "x": 291.4944,
+          "x": 300.5584,
           "y": 88.9
         }
       ]
     },
     "left": {
-      "steps": 1972,
+      "steps": 1988,
       "balls": [
         {
           "id": "cue",
-          "x": 262.4533,
-          "y": 173.8087
+          "x": 267.5938,
+          "y": 170.7392
         },
         {
           "id": "black",
@@ -1549,12 +1549,12 @@
       ]
     },
     "right": {
-      "steps": 1992,
+      "steps": 1975,
       "balls": [
         {
           "id": "cue",
-          "x": 181.6721,
-          "y": 157.5264
+          "x": 182.8942,
+          "y": 158.6254
         },
         {
           "id": "black",

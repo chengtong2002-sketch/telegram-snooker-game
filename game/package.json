@@ -17,6 +17,7 @@
     "smoke:aim": "node test/drive-aim.mjs",
     "smoke:inventory": "node test/drive-inventory.mjs",
     "smoke:topup": "node test/drive-topup.mjs",
+    "smoke:spin": "node test/drive-spin.mjs",
     "start": "serve dist --no-port-switching"
   },
   "dependencies": {

@@ -1,5 +1,5 @@
 /**
- * Desktop power controls: the mouse wheel and W / S nudge the same power value
+ * Desktop power controls: the mouse wheel, W / S (2%) and Q / E (1%) nudge the same power value
  * the left meter sets. Input layer only — what a power value does to the cue
  * ball is the sim's business and is untouched here.
  *
@@ -12,7 +12,7 @@ export const POWER_MIN = 0.02;
 export const POWER_MAX = 1;
 /** One wheel notch or one W / S press. */
 export const STEP = 0.02;
-/** With Shift held. */
+/** One Q / E press. Shift is spin's key now (spinInput.js), so fine power has its own keys. */
 export const FINE_STEP = 0.01;
 
 /**
@@ -37,15 +37,16 @@ export const clampPower = (p) => Math.min(POWER_MAX, Math.max(POWER_MIN, Math.ro
 export const stepPower = (power, direction, { fine = false } = {}) => clampPower(power + direction * (fine ? FINE_STEP : STEP));
 
 /**
- * One wheel event. Up (negative deltaY) is more power. Shift+wheel is sent as
- * horizontal scroll by some browsers, so deltaX stands in when deltaY is 0.
+ * One wheel event. Up (negative deltaY) is more power, always 2% a notch.
+ * Shift+wheel is sent as horizontal scroll by some browsers, so deltaX stands
+ * in when deltaY is 0.
  */
 export function wheelPower(power, { deltaY = 0, deltaX = 0, deltaMode = 0, shiftKey = false }, pageHeightPx = 800) {
   const raw = deltaY || (shiftKey ? deltaX : 0);
   if (!raw) return clampPower(power);
   const scale = deltaMode === DOM_DELTA_LINE ? LINE_PX : deltaMode === DOM_DELTA_PAGE ? pageHeightPx : 1;
   const px = Math.max(-WHEEL_NOTCH_PX, Math.min(WHEEL_NOTCH_PX, raw * scale));
-  return clampPower(power - (px / WHEEL_NOTCH_PX) * (shiftKey ? FINE_STEP : STEP));
+  return clampPower(power - (px / WHEEL_NOTCH_PX) * STEP);
 }
 
 /**
@@ -69,7 +70,12 @@ export function powerInputAllowed({ controlsEnabled, lobbyOpen, overlayOpen, oth
   return Boolean(controlsEnabled) && !lobbyOpen && !overlayOpen && !otherScreen && !typing;
 }
 
-const KEY_DIRECTION = { w: 1, s: -1 };
+const KEYS = {
+  w: { direction: 1, fine: false },
+  s: { direction: -1, fine: false },
+  e: { direction: 1, fine: true },
+  q: { direction: -1, fine: true },
+};
 
 /**
  * Wires the wheel and W / S to a power value.
@@ -126,13 +132,8 @@ export class DesktopPowerInput {
   };
 
   onKeyDown = (e) => {
-    // Shift pressed mid-hold: carry on at the fine step.
-    if (e.key === 'Shift' && this.held) {
-      this.held.fine = true;
-      return;
-    }
-    const direction = KEY_DIRECTION[e.key?.toLowerCase()];
-    if (!direction) return;
+    const k = KEYS[e.key?.toLowerCase()];
+    if (!k) return;
     // Ctrl+S is save, Cmd+W closes the tab: leave every chord alone.
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (!this.isAllowed()) return;
@@ -140,15 +141,13 @@ export class DesktopPowerInput {
     // The OS's own auto-repeat starts late and runs fast; the frame loop
     // below does the repeating, so its repeats are ignored.
     if (e.repeat && this.held) return;
-    this.held = { key: e.key.toLowerCase(), direction, fine: e.shiftKey, nextAt: this.now() + REPEAT_DELAY_MS };
-    this.#apply(stepPower(this.getPower(), direction, { fine: e.shiftKey }));
+    this.held = { key: e.key.toLowerCase(), direction: k.direction, fine: k.fine, nextAt: this.now() + REPEAT_DELAY_MS };
+    this.#apply(stepPower(this.getPower(), k.direction, { fine: k.fine }));
     this.#schedule();
   };
 
   onKeyUp = (e) => {
     if (this.held && e.key?.toLowerCase() === this.held.key) this.release();
-    // Shift let go mid-hold: carry on at the normal step.
-    else if (this.held && e.key === 'Shift') this.held.fine = false;
   };
 
   release = () => {

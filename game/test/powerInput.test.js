@@ -35,7 +35,7 @@ test('power clamps to the meter range, 2%–100%', () => {
   assert.equal(clampPower(0.5), 0.5);
 });
 
-test('a press is 2%, a Shift press is 1%, with no float drift', () => {
+test('a press is 2%, a fine (Q / E) press is 1%, with no float drift', () => {
   assert.equal(STEP, 0.02);
   assert.equal(FINE_STEP, 0.01);
   assert.equal(stepPower(0.3, 1), 0.32);
@@ -90,9 +90,9 @@ test('a fast fling is capped at one notch per event', () => {
   assert.equal(wheelPower(0.3, { deltaY: -2500 }), 0.32);
 });
 
-test('Shift+wheel is 1%, including when the browser sends it as horizontal', () => {
-  assert.equal(wheelPower(0.3, { deltaY: -100, shiftKey: true }), 0.31);
-  assert.equal(wheelPower(0.3, { deltaY: 0, deltaX: -100, shiftKey: true }), 0.31);
+test('Shift+wheel stays 2% (Shift is spin now), including when sent as horizontal', () => {
+  assert.equal(wheelPower(0.3, { deltaY: -100, shiftKey: true }), 0.32);
+  assert.equal(wheelPower(0.3, { deltaY: 0, deltaX: -100, shiftKey: true }), 0.32);
   // Horizontal scroll without Shift is not a power gesture.
   assert.equal(wheelPower(0.3, { deltaY: 0, deltaX: -100 }), 0.3);
 });
@@ -198,7 +198,7 @@ test('Ctrl+wheel is left to the browser as zoom', () => {
   assert.equal(e.defaultPrevented, false);
 });
 
-test('W raises and S lowers power by 2%; Shift makes it 1%', () => {
+test('W raises and S lowers power by 2%; E and Q by 1%; Shift changes nothing', () => {
   const r = rig();
   r.keys.fire('keydown', { key: 'w' });
   assert.equal(r.power, 0.32);
@@ -210,6 +210,14 @@ test('W raises and S lowers power by 2%; Shift makes it 1%', () => {
   assert.equal(r.power, 0.28);
   r.keys.fire('keydown', { key: 'W', shiftKey: true }); // Shift turns the key upper-case
   r.keys.fire('keyup', { key: 'W' });
+  assert.equal(r.power, 0.3);
+  r.keys.fire('keydown', { key: 'e' });
+  r.keys.fire('keyup', { key: 'e' });
+  assert.equal(r.power, 0.31);
+  r.keys.fire('keydown', { key: 'q' });
+  r.keys.fire('keyup', { key: 'q' });
+  r.keys.fire('keydown', { key: 'Q' });
+  r.keys.fire('keyup', { key: 'Q' });
   assert.equal(r.power, 0.29);
 });
 
@@ -267,15 +275,16 @@ test('holding stops at 100%', () => {
   assert.equal(r.power, 1);
 });
 
-test('Shift during a hold switches to 1% steps, and back when released', () => {
+test('holding E repeats in 1% steps; Shift mid-hold changes nothing', () => {
   const r = rig();
-  r.keys.fire('keydown', { key: 'w' }); // 0.32
+  r.keys.fire('keydown', { key: 'e' }); // 0.31
   r.keys.fire('keydown', { key: 'Shift' });
-  r.at(REPEAT_DELAY_MS + REPEAT_INTERVAL_MS); // two fine steps
-  assert.equal(r.power, 0.34);
+  r.at(REPEAT_DELAY_MS + REPEAT_INTERVAL_MS); // two more fine steps
+  assert.equal(r.power, 0.33);
   r.keys.fire('keyup', { key: 'Shift' });
-  r.at(REPEAT_DELAY_MS + 2 * REPEAT_INTERVAL_MS); // one normal step
-  assert.equal(r.power, 0.36);
+  r.at(REPEAT_DELAY_MS + 2 * REPEAT_INTERVAL_MS);
+  assert.equal(r.power, 0.34);
+  r.keys.fire('keyup', { key: 'e' });
 });
 
 test('a hold stops the moment the turn ends or a menu opens', () => {

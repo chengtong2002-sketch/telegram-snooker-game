@@ -68,16 +68,19 @@ test('spin shots are deterministic, stepped or drained', () => {
   assert.deepStrictEqual(sim.result(), a);
 });
 
-test('draw: the cue ball stops on the red, then comes back (targets: 60–90cm at full, red 50cm away)', () => {
+test('draw: the cue ball stops on the red, then comes back (1.25 / 45: ~166cm at full, red 50cm away)', () => {
   const stun = straight({});
   const draw = straight({ spin: { x: 0, y: -0.8 } });
   assert.ok(stun.back < 1, `a centre-ball hit does not come back (${stun.back})`);
-  assert.ok(draw.back >= 60 && draw.back <= 90, `max draw came back ${draw.back.toFixed(1)}cm`);
+  assert.ok(draw.back >= 140 && draw.back <= 190, `max draw came back ${draw.back.toFixed(1)}cm`);
   assert.ok(draw.on < 1, 'and never ran on first');
   const less = straight({ spin: { x: 0, y: -0.4 } }).back;
   assert.ok(less > 5 && less < draw.back, `less draw, less back (${less.toFixed(1)})`);
   const soft = straight({ power: 0.5, spin: { x: 0, y: -0.8 } }).back;
   assert.ok(soft > 5 && soft < draw.back, `softer, less back (${soft.toFixed(1)})`);
+  // The Sep 25 retune: a soft screw still draws (1.0 / 90 gave 0 here).
+  const gentle = straight({ power: 0.4, spin: { x: 0, y: -0.8 } }).back;
+  assert.ok(gentle >= 25 && gentle <= 60, `40% power still draws (${gentle.toFixed(1)})`);
 });
 
 test('draw wears off with the distance to the object ball', () => {

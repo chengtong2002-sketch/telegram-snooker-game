@@ -30,16 +30,18 @@ export const SPIN = {
   maxOffset: 0.8,
   /**
    * Roll speed at strike, per unit of spin.y, as a fraction of the strike
-   * speed. Tuned Sep 24 (scratchpad spintune/grid): max draw at full power,
-   * object ball 50cm away, brings the cue ball back ~89cm; ~69cm from 150cm.
+   * speed. Retuned Sep 25 with slipDecel (user's pick, 1.25 / 45) so a soft
+   * screw still draws: max draw with the red 50cm away comes back ~11cm at
+   * 30% power, ~41 at 40%, ~65 at 50%, ~110 at 70%; ~151cm from 150cm at full.
+   * (Was 1.0 / 90, which gave nothing below ~50% power.)
    */
-  topGain: 1.0,
+  topGain: 1.25,
   /** Extra factor on follow only (y > 0), to tune follow by feel apart from draw. */
   followScale: 1.0,
   /** Side speed at strike, per unit of spin.x, as a fraction of the strike speed. */
   sideGain: 1.25,
   /** Cloth sliding friction μg (cm/s²). Sets how soon a sliding ball starts to roll. */
-  slipDecel: 90,
+  slipDecel: 45,
   /** Below this slip (cm/s) the ball is rolling: r just follows v. */
   rollEps: 0.5,
   /** Side lost on the cloth, per second (exponential). */

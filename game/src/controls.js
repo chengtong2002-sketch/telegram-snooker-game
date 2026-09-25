@@ -1,6 +1,7 @@
 import { BALL_RADIUS, TABLE, inTheD } from '@snooker/sim';
 import { haptic } from './telegram.js';
 import { DesktopPowerInput, powerInputAllowed, isTypingTarget } from './powerInput.js';
+import { SpinControl, spinForShot } from './spinInput.js';
 
 // Finger travel (CSS px) under which a touch counts as a tap rather than a drag.
 const TAP_SLOP_PX = 10;
@@ -50,7 +51,7 @@ export class Controls {
     hud.el.shoot.addEventListener('click', () => {
       if (!this.enabled) return;
       haptic('medium');
-      this.onShoot({ angle: this.angle, power: this.power });
+      this.onShoot(this.aim);
     });
 
     this.canvas = canvas;
@@ -61,6 +62,16 @@ export class Controls {
     this.placed = false;
     this.poweringId = null;
 
+    // The player's own turn to aim, with nothing on top of the table: the
+    // wheel, the keys and the spin button only act then.
+    const inputAllowed = () => powerInputAllowed({
+      controlsEnabled: this.enabled,
+      lobbyOpen: !document.getElementById('lobby')?.hidden,
+      overlayOpen: !hud.el.overlay.hidden,
+      otherScreen: Boolean(document.documentElement.dataset.screen),
+      typing: isTypingTarget(document.activeElement),
+    });
+
     // Desktop: wheel over the game and W / S drive the same power value. Touch
     // devices never send either, so phones behave exactly as before.
     this.desktopPower = new DesktopPowerInput({
@@ -68,14 +79,24 @@ export class Controls {
       keyTarget: window,
       getPower: () => this.power,
       setPower: (p) => this.#setPower(p),
-      isAllowed: () => powerInputAllowed({
-        controlsEnabled: this.enabled,
-        lobbyOpen: !document.getElementById('lobby')?.hidden,
-        overlayOpen: !hud.el.overlay.hidden,
-        otherScreen: Boolean(document.documentElement.dataset.screen),
-        typing: isTypingTarget(document.activeElement),
-      }),
+      isAllowed: inputAllowed,
     });
+
+    this.spinInput = new SpinControl({
+      button: document.getElementById('spin-btn'),
+      picker: document.getElementById('spin-picker'),
+      isAllowed: inputAllowed,
+    });
+  }
+
+  /** Spin is offered in practice only until the server takes it (spin phase 2). */
+  setSpinAvailable(on) {
+    this.spinInput.setAvailable(on);
+  }
+
+  /** Every turn starts from the centre of the cue ball. */
+  resetSpin() {
+    this.spinInput.reset();
   }
 
   /** Every power change goes through here: the meter, the wheel and W / S. */
@@ -87,6 +108,7 @@ export class Controls {
 
   setEnabled(enabled) {
     this.enabled = enabled;
+    if (!enabled) this.spinInput.close();
     this.hud.setShootEnabled(enabled && this.power > 0.02);
   }
 
@@ -227,7 +249,9 @@ export class Controls {
     }
   };
 
+  /** The shot as set. Spin only when offered and off-centre (spinForShot). */
   get aim() {
-    return { angle: this.angle, power: this.power };
+    const spin = this.spinInput.available ? spinForShot(this.spinInput.spin) : undefined;
+    return spin ? { angle: this.angle, power: this.power, spin } : { angle: this.angle, power: this.power };
   }
 }

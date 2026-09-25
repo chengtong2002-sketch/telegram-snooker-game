@@ -20,6 +20,11 @@
            and the table gets the full height of the screen. -->
       <aside id="left">
         <button id="pause" class="hud-btn" aria-label="Pause">❚❚</button>
+        <!-- Spin: the dot is where the tip meets the cue ball. Tapping opens
+             #spin-picker. Practice only for now (spinInput.js). -->
+        <button id="spin-btn" class="hud-btn spin-btn" aria-label="Spin: Centre" hidden>
+          <span class="spin-face"><span class="spin-dot"></span></span>
+        </button>
         <div id="power" role="slider" aria-label="Shot power" aria-valuemin="0" aria-valuemax="100">
           <div id="power-fill"></div>
           <div id="power-label">30%</div>
@@ -64,6 +69,20 @@
         <button id="concede" class="concede" hidden>Concede match</button>
         <button id="shoot" class="shoot">SHOOT</button>
       </aside>
+
+      <!-- The large cue ball: drag the dot to set spin. Also shown, without
+           its buttons, while Shift is held on a desktop ('peek'). -->
+      <div id="spin-picker" hidden>
+        <div class="spin-sheet">
+          <div class="spin-title">Spin</div>
+          <div class="spin-ball"><span class="spin-limit"></span><span class="spin-dot"></span></div>
+          <div class="spin-label">Centre</div>
+          <div class="spin-actions">
+            <button class="btn" data-spin="reset">Reset</button>
+            <button class="btn primary" data-spin="done">Done</button>
+          </div>
+        </div>
+      </div>
 
       <div id="toast" hidden></div>
       <div id="sync-badge" hidden>⏳ <span id="sync-count">0</span> queued</div>

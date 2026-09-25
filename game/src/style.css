@@ -230,6 +230,74 @@ html, body {
   color: var(--text); text-shadow: 0 1px 2px #000;
 }
 
+/* ---------- spin ---------- */
+
+/* The small cue ball under pause. Square, as wide as the column. Explicit
+   sizes, no aspect-ratio: iOS before 15 does not know it, and there the
+   button and the ball inside it collapsed to nothing. */
+.spin-btn {
+  height: var(--side-l);
+  display: grid; place-items: center;
+  padding: 0;
+}
+.spin-btn[hidden] { display: none; } /* .hud-btn's display would outrank [hidden] */
+.spin-btn.set { border-color: rgba(53,196,138,.7); }
+.spin-face, .spin-ball {
+  position: relative;
+  border-radius: 50%;
+  background: radial-gradient(circle at 36% 30%, #ffffff, #efeadb 55%, #b9b3a2);
+  box-shadow: inset 0 -2px 4px rgba(0,0,0,.25);
+}
+.spin-face { width: 72%; height: 72%; }
+.spin-dot {
+  position: absolute; left: 50%; top: 50%;
+  width: 22%; height: 22%;
+  border-radius: 50%;
+  background: #c8202a;
+  box-shadow: 0 0 0 1.5px rgba(255,255,255,.85);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+/* Over the table (and the side columns), under the lobby (30) and #overlay (40). */
+#spin-picker {
+  position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 25;
+  background: rgba(4,9,7,.55);
+  display: grid; place-items: center;
+  padding: 12px;
+}
+#spin-picker[hidden] { display: none; } /* see #overlay */
+/* Shift held on a desktop: just the ball, and the mouse keeps working through it. */
+#spin-picker.peek { background: transparent; pointer-events: none; }
+#spin-picker.peek .spin-actions { display: none; }
+.spin-sheet {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  max-height: 100%;
+  padding: 12px 16px;
+  border-radius: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 30px rgba(0,0,0,.5);
+}
+.spin-title { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+.spin-ball {
+  --ball: clamp(110px, 42vmin, 210px);
+  width: var(--ball); height: var(--ball);
+  flex: 0 0 auto;
+  touch-action: none; cursor: crosshair;
+}
+.spin-ball .spin-dot { width: 14%; height: 14%; }
+/* The furthest the tip can go (SPIN.maxOffset = 0.8 of the radius). */
+.spin-limit {
+  position: absolute; top: 10%; right: 10%; bottom: 10%; left: 10%;
+  border-radius: 50%;
+  border: 1px dashed rgba(0,0,0,.28);
+  pointer-events: none;
+}
+.spin-label { font-size: 15px; font-weight: 700; min-height: 1.2em; }
+.spin-actions { display: flex; gap: 8px; width: 100%; }
+.spin-actions .btn { min-width: 84px; }
+
 /* flex-basis 0 + hidden overflow: the wrap's size comes from the screen, never
    from the canvas inside it, so fitCanvas() cannot feed back on itself. */
 #table-wrap {

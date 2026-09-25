@@ -304,14 +304,20 @@ function settingsSheet(hud) {
  * only say so there; a phone's sheet reads as it always did.
  */
 function desktopPowerHint() {
-  return hasDesktopPowerInput() ? '\n      <div class="row"><span>Power</span><b>scroll wheel or W / S</b></div>' : '';
+  return hasDesktopPowerInput() ? '\n      <div class="row"><span>Power</span><b>scroll wheel or W / S · Q / E for 1%</b></div>' : '';
+}
+
+/** Spin: practice only until the server takes it (spinInput.js). */
+function spinHint() {
+  const how = hasDesktopPowerInput() ? 'Shift + mouse or arrow keys · C to centre' : 'tap the cue ball on the left';
+  return `\n      <div class="row"><span>Spin (practice)</span><b>${how}</b></div>`;
 }
 
 function rulesSheet(hud) {
   hud.modal({
     title: 'How to play',
     body: `
-      <p>Drag on the table to aim, set power on the left meter, then press SHOOT.</p>${desktopPowerHint()}
+      <p>Drag on the table to aim, set power on the left meter, then press SHOOT.</p>${desktopPowerHint()}${spinHint()}
       <div class="row"><span>Match</span><b>Best of 3 frames</b></div>
       <div class="row"><span>Shot clock</span><b>30 seconds</b></div>
       <div class="row"><span>Pot a red</span><b>1 point, then a colour</b></div>
