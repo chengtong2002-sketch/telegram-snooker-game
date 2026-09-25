@@ -90,6 +90,7 @@ try {
     const slot = 40 + Math.floor(Math.random() * 10);
     await page.goto(`${GAME}/?mode=practice&dev=${slot}`);
     await page.waitForFunction(() => window.__snookerDebug?.phase === 'aiming');
+    check(await page.locator('#spin-btn').isVisible(), 'practice offers spin');
     const before = await page.evaluate(() => localStorage.getItem('snooker.practice'));
 
     await page.locator('#pause').click();
@@ -132,6 +133,8 @@ try {
     page.on('pageerror', (err) => check(false, `page error: ${err.message}`));
     await page.goto(`${GAME}/?mode=pvp&match=${matchId}&dev=${slots[0]}`);
     await page.waitForFunction(() => ['aiming', 'waiting'].includes(window.__snookerDebug?.phase));
+    // Spin is practice only until the server takes it (spin phase 2).
+    check(!(await page.locator('#spin-btn').isVisible()), 'PvP offers no spin');
 
     await page.locator('#pause').click();
     const menu = await modal(page);
