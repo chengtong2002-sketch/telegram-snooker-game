@@ -204,9 +204,8 @@ async function boot() {
 
   if (screen === 'lobby') {
     hud.hint('');
-    // Back from a card payment (RM checkout → t.me/…?startapp=store_<orderId>):
-    // the lobby, with the store open on the coin packs following that order.
-    const store = params.screen === 'store' ? { tab: 'coins', orderId: params.orderId } : null;
+    // startapp=store: the lobby, with the store open on the coin packs.
+    const store = params.screen === 'store' ? { tab: 'coins' } : null;
     await openLobby(me, { store });
     return;
   }
@@ -237,11 +236,10 @@ async function openLobby(me, { store = null } = {}) {
 }
 
 /** The store sheet over the lobby; the lobby's coin chip and the drawn skins follow it. */
-function openStoreOverLobby({ tab, orderId } = {}) {
+function openStoreOverLobby({ tab } = {}) {
   return openStore({
     hud,
     tab,
-    orderId,
     onChange: ({ balance, equipped }) => {
       setLobbyCoins(balance);
       rememberEquipped(equipped);

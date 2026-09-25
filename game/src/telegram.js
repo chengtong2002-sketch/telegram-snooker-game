@@ -77,12 +77,8 @@ export function launchParams() {
     params.set('mode', 'pvp');
     params.set('match', fromStartParam.slice(4));
   }
-  // Back from a Revenue Monster checkout: "store_<orderId>" (or just "store").
-  const store = /^store(?:_(rm[0-9a-f]{22}))?$/.exec(fromStartParam);
-  if (store) {
-    params.set('screen', 'store');
-    if (store[1]) params.set('order', store[1]);
-  }
+  // "store": the lobby with the store open.
+  if (fromStartParam === 'store') params.set('screen', 'store');
   return {
     // null means "opened with no deep link", which lands on the lobby. Every
     // bot button sets mode (or screen), so those still go straight to the mode
@@ -90,8 +86,6 @@ export function launchParams() {
     mode: params.get('mode'),
     matchId: params.get('match') ?? null,
     screen: params.get('screen') ?? null,
-    // A coin order to follow on the store screen (screen=store).
-    orderId: params.get('order') ?? null,
   };
 }
 
@@ -163,20 +157,4 @@ export function openInvoice(url) {
       resolve('failed');
     }
   });
-}
-
-/**
- * Open a web page outside the Mini App: RM's checkout belongs in the browser,
- * not the webview (banks' pages and their redirects expect a real browser).
- */
-export function openExternal(url) {
-  if (isTelegram() && typeof tg.openLink === 'function') {
-    try {
-      tg.openLink(url);
-      return;
-    } catch {
-      // Fall through to the plain browser way.
-    }
-  }
-  window.open(url, '_blank', 'noopener');
 }

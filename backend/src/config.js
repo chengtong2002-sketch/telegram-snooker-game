@@ -98,7 +98,11 @@ export const config = {
     privateKey: pem(process.env.RM_PRIVATE_KEY),
     serverPublicKey: pem(process.env.RM_SERVER_PUBLIC_KEY),
     publicBackendUrl: (process.env.PUBLIC_BACKEND_URL ?? '').trim().replace(/\/+$/, ''),
-    returnAppUrl: (process.env.RM_RETURN_APP_URL ?? 'https://t.me/snookerPlayBot/play').trim().replace(/\/+$/, ''),
+    // The web top-up page's "done" screen (docs/topup-web-plan.md): RM's
+    // redirectUrl is <this>?order=<orderId>. RM checkouts start only there.
+    webReturnUrl: (process.env.RM_WEB_RETURN_URL ?? '').trim().replace(/\/+$/, ''),
+    // RM method codes offered on the web page, comma-separated. TNG only for now.
+    webMethods: (process.env.RM_WEB_METHODS ?? 'TNG_MY').split(',').map((s) => s.trim()).filter(Boolean),
   },
 
   telegram: {
@@ -168,8 +172,11 @@ export function rmConfigProblems(rm = config.rm) {
   if (!/^https:\/\/[^/]+/.test(rm.publicBackendUrl)) {
     problems.push('PUBLIC_BACKEND_URL must be the https address RM can reach this backend on');
   }
-  if (!/^https:\/\/t\.me\/[^/]+\/[^/]+$/.test(rm.returnAppUrl)) {
-    problems.push('RM_RETURN_APP_URL must be a Mini App link like https://t.me/<bot>/<app>');
+  if (!/^https:\/\/[^/?#]+(\/[^?#]*)?$/.test(rm.webReturnUrl)) {
+    problems.push('RM_WEB_RETURN_URL must be the https address of the top-up page\'s done screen, with no query');
+  }
+  if (rm.webMethods.length === 0 || rm.webMethods.some((m) => !/^[A-Z0-9_]{2,32}$/.test(m))) {
+    problems.push('RM_WEB_METHODS must be RM method codes like TNG_MY, comma-separated');
   }
   return problems;
 }

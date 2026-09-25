@@ -2,11 +2,14 @@
  * Coin top-ups paid in MYR through Revenue Monster (docs/rm-payments-plan.md).
  * SANDBOX ONLY, behind PAYMENTS_RM_ENABLED (off by default, and in production).
  *
- *   1. createRmOrder: an order row, then an RM checkout (POST /v3/payment/online,
- *      MOBILE_PAYMENT). The Mini App opens its url in the browser.
- *   2. RM sends the player back to the Mini App
- *      (t.me/snookerPlayBot/play?startapp=store_<orderId>). Whatever status that
- *      trip carries is for display only: nothing here reads it.
+ *   1. createRmOrder: an order row, then an RM checkout (POST /v3/payment/online).
+ *      Only the web top-up page starts one (docs/topup-web-plan.md): Telegram
+ *      requires Stars for digital goods inside the Mini App, so the Mini App
+ *      never offers MYR. WEB_PAYMENT on a desktop (RM shows the TNG QR),
+ *      MOBILE_PAYMENT on a phone (RM opens the TNG app).
+ *   2. RM sends the player back to the page's done screen
+ *      (RM_WEB_RETURN_URL?order=<orderId>). Whatever status that trip carries
+ *      is for display only: nothing here reads it.
  *   3. **Coins are credited by exactly two things, both RM speaking for itself:**
  *      - RM's webhook, when its signature verifies against RM's server key;
  *      - the reconciler's own signed query to RM's API (server to server).
@@ -53,8 +56,15 @@ export function useRmFetch(fn) {
 
 const packFor = (packId) => config.store.packs.find((p) => p.id === packId && p.myrSen > 0) ?? null;
 export const notifyUrl = () => `${config.rm.publicBackendUrl}/webhooks/rm`;
-/** Where RM sends the player after paying: straight back into the Mini App's store, on this order. */
-export const redirectUrl = (orderId) => `${config.rm.returnAppUrl}?startapp=store_${orderId}`;
+/** Where RM sends the player after paying: the top-up page's done screen, on this order. */
+export const redirectUrl = (orderId) => `${config.rm.webReturnUrl}?order=${orderId}`;
+
+/**
+ * How RM shows the checkout. The page says which device it is on; that only
+ * changes the checkout's layout, never the price, the coins or the account, so
+ * it is safe to take from the client. Anything but 'mobile' gets the QR page.
+ */
+export const checkoutType = (device) => (device === 'mobile' ? 'MOBILE_PAYMENT' : 'WEB_PAYMENT');
 
 /**
  * Start an order and its RM checkout. Returns { status, ... }:
@@ -64,7 +74,7 @@ export const redirectUrl = (orderId) => `${config.rm.returnAppUrl}?startapp=stor
  *   too_many_open | daily_limit
  *   provider_error  RM refused or did not answer; the order is marked failed
  */
-export async function createRmOrder(userId, packId) {
+export async function createRmOrder(userId, packId, { device = null } = {}) {
   if (!config.rm.enabled) return { status: 'disabled' };
   const pack = packFor(packId);
   if (!pack) return { status: 'unknown_pack' };
@@ -89,9 +99,9 @@ export async function createRmOrder(userId, packId) {
   try {
     checkout = await rm().createCheckout({
       storeId: config.rm.storeId,
-      type: 'MOBILE_PAYMENT',
+      type: checkoutType(device),
       layoutVersion: 'v4',
-      method: [],
+      method: [...config.rm.webMethods],
       redirectUrl: redirectUrl(orderId),
       notifyUrl: notifyUrl(),
       order: {
@@ -118,7 +128,7 @@ export async function createRmOrder(userId, packId) {
     status: 'pending', provider_checkout_id: String(checkout.checkoutId ?? '').slice(0, 128) || null,
   });
   await logEvent({
-    orderId, source: 'api', event: 'checkout', outcome: 'pending', payload: { packId: pack.id, myrSen: pack.myrSen },
+    orderId, source: 'api', event: 'checkout', outcome: 'pending', payload: { packId: pack.id, myrSen: pack.myrSen, type: checkoutType(device) },
   });
   return {
     status: 'created', orderId, url: checkout.url, coins: pack.coins, myrSen: pack.myrSen,
@@ -248,9 +258,9 @@ export async function handleRmWebhook({ rawBody, headers }) {
   return { http: 200, body: { ok: true } };
 }
 
-/* ---------- the Mini App's view of an order ---------- */
+/* ---------- the top-up page's view of an order ---------- */
 
-/** One of this player's coin orders (either provider), for the store's waiting sheet. Read-only. */
+/** One of this player's coin orders, for the top-up page's done screen. Read-only: it never asks RM. */
 export async function orderForUser(userId, orderId) {
   if (typeof orderId !== 'string' || orderId.length > 24) return null;
   const order = await getDb()('payment_orders').where({ id: orderId, user_id: userId }).first();

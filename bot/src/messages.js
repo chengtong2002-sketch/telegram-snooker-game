@@ -236,6 +236,17 @@ export function coinsAddedMessage({ coins, balance }) {
   ]);
 }
 
+/**
+ * The backend's `coins-added` event: a payment made outside Telegram (the web
+ * top-up page) has been credited. Deliberately bare, by the user's rule: no
+ * payment method, no mention of the web, no link and no button. Telegram
+ * requires Stars for digital goods inside the bot, so nothing here may point a
+ * player at another way to pay.
+ */
+export function balanceUpdatedMessage({ coins }) {
+  return message([html`Your balance was updated: +${Number(coins).toLocaleString('en')} coins`]);
+}
+
 /** /paysupport: Telegram requires it of every bot that takes Stars. */
 export function paySupportMessage({ supportHandle = '' } = {}) {
   return message([

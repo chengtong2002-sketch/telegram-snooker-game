@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    { "source": "/topup", "destination": "/topup/index.html" },
+    { "source": "/topup/done", "destination": "/topup/index.html" },
+    { "source": "/!(topup)", "destination": "/index.html" },
+    { "source": "/!(topup)/**", "destination": "/index.html" }
+  ]
+}

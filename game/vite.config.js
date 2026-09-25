@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 
 /**
@@ -51,8 +52,23 @@ const buildTonConnectManifest = () => ({
   },
 });
 
+/**
+ * Dev only: /topup and /topup/done are the top-up page, not the game. In
+ * production public/serve.json does the same for `serve -s`.
+ */
+const devTopupRoute = () => ({
+  name: 'dev-topup-route',
+  apply: 'serve',
+  configureServer(server) {
+    server.middlewares.use((req, _res, next) => {
+      if (/^\/topup(\/(done\/?)?)?(\?|$)/.test(req.url)) req.url = `/topup/index.html${req.url.replace(/^[^?]*/, '')}`;
+      next();
+    });
+  },
+});
+
 export default defineConfig({
-  plugins: [devTonConnectManifest(), buildTonConnectManifest()],
+  plugins: [devTonConnectManifest(), buildTonConnectManifest(), devTopupRoute()],
   server: {
     port: 5173,
     host: true,
@@ -62,6 +78,18 @@ export default defineConfig({
     // Used when VITE_BACKEND_URL is set to an empty string.
     proxy: { '/api': 'http://localhost:8080' },
   },
-  build: { target: 'es2022', outDir: 'dist', sourcemap: true },
+  build: {
+    target: 'es2022',
+    outDir: 'dist',
+    sourcemap: true,
+    // Two pages: the Mini App, and the web top-up page (its own small bundle:
+    // no game, no Telegram WebApp SDK).
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        topup: fileURLToPath(new URL('./topup/index.html', import.meta.url)),
+      },
+    },
+  },
   base: '/',
 });

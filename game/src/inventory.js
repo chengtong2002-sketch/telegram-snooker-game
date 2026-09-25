@@ -8,14 +8,14 @@
 
 const fmt = (n) => Number(n ?? 0).toLocaleString('en');
 
-const VIA = { stars: 'Telegram Stars', card: 'card or e-wallet' };
+const VIA = { stars: 'Telegram Stars' };
 
 /** One history entry as a line a player understands. */
 export function historyLabel(entry) {
   switch (entry.type) {
     case 'item': return `Bought ${entry.itemName ?? 'an item'}`;
-    case 'pack': return entry.via ? `Coin pack · ${VIA[entry.via]}` : 'Coin pack';
-    case 'refund': return entry.via ? `Refund · ${VIA[entry.via]}` : 'Refund';
+    case 'pack': return VIA[entry.via] ? `Coin pack · ${VIA[entry.via]}` : 'Coin pack';
+    case 'refund': return VIA[entry.via] ? `Refund · ${VIA[entry.via]}` : 'Refund';
     case 'grant': return 'Coins from Snooker';
     default: return 'Balance adjustment';
   }

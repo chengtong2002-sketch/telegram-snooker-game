@@ -67,13 +67,31 @@ export async function issueSession(telegramUser) {
   return { token, user };
 }
 
-/** Bearer-token guard. Attaches req.user (the DB row). */
-export async function requireAuth(req, res, next) {
+/**
+ * The web top-up page's session (docs/topup-web-plan.md, decision 4): 30
+ * minutes, and scoped, so it opens the top-up routes and nothing else. A
+ * leaked one cannot play, concede, link a wallet or claim rewards.
+ */
+export const TOPUP_SCOPE = 'topup';
+export const TOPUP_SESSION_SEC = 30 * 60;
+
+export function issueTopupSession(user) {
+  const token = jwt.sign(
+    { sub: String(user.id), tg: String(user.telegram_id), scope: TOPUP_SCOPE },
+    config.jwtSecret,
+    { expiresIn: TOPUP_SESSION_SEC },
+  );
+  return { token, expiresAt: new Date(Date.now() + TOPUP_SESSION_SEC * 1000).toISOString() };
+}
+
+/** A bearer guard for tokens of one scope (undefined = the Mini App's). Attaches req.user. */
+const bearerGuard = (scope) => async (req, res, next) => {
   const header = req.get('authorization') ?? '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token) return res.status(401).json({ error: 'missing bearer token' });
   try {
     const payload = jwt.verify(token, config.jwtSecret);
+    if (payload.scope !== scope) return res.status(401).json({ error: 'this token is not for this route' });
     const user = await userById(Number(payload.sub));
     if (!user) return res.status(401).json({ error: 'unknown user' });
     if (user.banned) return res.status(403).json({ error: 'account suspended' });
@@ -82,7 +100,12 @@ export async function requireAuth(req, res, next) {
   } catch {
     return res.status(401).json({ error: 'invalid or expired token' });
   }
-}
+};
+
+/** Bearer-token guard for everything the Mini App calls. Refuses top-up tokens. */
+export const requireAuth = bearerGuard(undefined);
+/** The top-up page's routes only. Refuses the Mini App's tokens. */
+export const requireTopupAuth = bearerGuard(TOPUP_SCOPE);
 
 /** Shared-secret guard for bot -> backend calls. */
 export function requireInternal(req, res, next) {

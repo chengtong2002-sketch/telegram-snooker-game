@@ -1,5 +1,10 @@
 # Revenue Monster payments (sandbox) — plan
 
+> **Superseded in part (2026-09-25): RM checkouts now start ONLY on the web top-up page** (docs/topup-web-plan.md).
+> The Mini App's MYR buttons, `POST /api/payments/rm/orders`, `GET /api/payments/orders/:id`, the
+> `startapp=store_<orderId>` return and `RM_RETURN_APP_URL` are gone: Telegram requires Stars for digital goods
+> inside the Mini App. The webhook, reconciler, ledger and refunds below are unchanged.
+
 **Status:** decisions 1–4 taken by the user 2026-09-23 (below); decision 5 (sandbox account) still open.
 **Built 2026-09-24: phases 1–4, against a fake RM.** Phase 0 (a real sandbox account) is the only thing left,
 and it must tick every box in "Phase 0 checklist" at the end before the flag is switched on anywhere.

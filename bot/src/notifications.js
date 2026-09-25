@@ -7,7 +7,7 @@ import { matchKeyboard, canOpenGame } from './keyboards.js';
 import { isPermanentSendFailure } from './sendFailures.js';
 import {
   matchedMessage, yourTurnMessage, frameCheckpointMessage, matchOverMessage, matchAbandonedMessage,
-  walletChangedMessage, coinsAddedMessage,
+  walletChangedMessage, balanceUpdatedMessage,
 } from './messages.js';
 
 /**
@@ -59,8 +59,9 @@ export function startNotificationServer(bot) {
       } else if (event.type === 'match-abandoned') {
         await send(matchAbandonedMessage(event));
       } else if (event.type === 'coins-added') {
-        // A card or wallet payment (Revenue Monster) the backend has credited.
-        await send(coinsAddedMessage(event));
+        // A web top-up the backend has credited: the bare balance line, no
+        // keyboard, nothing that names how it was paid.
+        await send(balanceUpdatedMessage(event));
       } else if (event.type === 'wallet-changed') {
         await send(walletChangedMessage(event, { supportHandle: config.supportHandle }));
       } else {

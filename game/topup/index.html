@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Snooker coins</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🎱</text></svg>"
+    />
+    <link rel="stylesheet" href="/src/topup/topup.css" />
+  </head>
+  <body>
+    <!-- The web top-up page (docs/topup-web-plan.md). Outside Telegram: the
+         Mini App never links here. Every screen is drawn by page.js. -->
+    <main class="card">
+      <header class="head">
+        <div class="brand"><span class="ball" aria-hidden="true"></span>Snooker coins</div>
+        <div id="who" class="who" hidden></div>
+      </header>
+      <section id="screen" aria-live="polite"></section>
+      <footer class="small">
+        Coins buy cues and cue balls in the game, and nothing else. They never affect matches or rewards, and they
+        cannot be sold, transferred or exchanged for money. Purchases are final, except where a refund is required.
+      </footer>
+    </main>
+    <script type="module" src="/src/topup/page.js"></script>
+  </body>
+</html>

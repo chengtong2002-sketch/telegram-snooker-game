@@ -8,6 +8,7 @@ import statsRoutes from './stats.js';
 import syncRoutes from './sync.js';
 import storeRoutes from './store.js';
 import paymentRoutes from './payments.js';
+import topupRoutes from './topup.js';
 import internalRoutes from './internal.js';
 
 const router = Router();
@@ -23,6 +24,8 @@ router.use('/stats', statsRoutes);
 router.use('/sync', syncRoutes);
 router.use('/store', storeRoutes);
 router.use('/payments', paymentRoutes);
+// The web top-up page (outside Telegram), not the Mini App.
+router.use('/topup', topupRoutes);
 
 export { internalRoutes };
 export default router;

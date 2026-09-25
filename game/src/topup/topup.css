@@ -1,0 +1,114 @@
+/* The web top-up page: a checkout, so light and plain, in the game's colours. */
+:root {
+  --felt: #146b45;
+  --felt-dark: #0e4f33;
+  --gold: #d4ad52;
+  --red: #c8202a;
+  --ink: #1b1f1d;
+  --muted: #5d6762;
+  --line: #dfe4e1;
+  --paper: #ffffff;
+  --page: #eef2ef;
+  --good: #1d7a47;
+  --bad: #b3261e;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--page);
+  color: var(--ink);
+  font: 16px/1.45 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  display: flex;
+  justify-content: center;
+  padding: 24px 16px;
+}
+
+.card {
+  width: 100%;
+  max-width: 440px;
+  background: var(--paper);
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 6%), 0 8px 24px rgb(0 0 0 / 6%);
+  overflow: hidden;
+  align-self: flex-start;
+}
+
+.head {
+  background: linear-gradient(180deg, var(--felt), var(--felt-dark));
+  color: #fff;
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; }
+.ball {
+  width: 18px; height: 18px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #ff6b6b, var(--red) 60%, #7d1117);
+}
+.who { font-size: 14px; text-align: right; line-height: 1.25; }
+.who b { display: block; font-size: 15px; }
+
+#screen { padding: 18px; }
+
+h1 { font-size: 20px; margin: 0 0 6px; }
+p { margin: 0 0 12px; }
+.muted { color: var(--muted); }
+
+.packs { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 10px; }
+.pack {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px;
+}
+.pack-coins { font-weight: 700; font-size: 17px; }
+.pack-coins small { display: block; font-weight: 400; font-size: 13px; color: var(--muted); }
+
+button, .btn {
+  font: inherit; font-weight: 600; cursor: pointer;
+  border: 0; border-radius: 10px; padding: 10px 16px; min-height: 44px;
+  display: inline-flex; align-items: center; justify-content: center; text-decoration: none;
+}
+.btn-pay { background: var(--felt); color: #fff; min-width: 108px; }
+.btn-pay:hover { background: var(--felt-dark); }
+.btn-pay:disabled { opacity: .55; cursor: default; }
+.btn-plain { background: transparent; color: var(--felt); padding: 8px 4px; min-height: 0; }
+.btn-game { background: var(--gold); color: #2b2206; width: 100%; margin-top: 8px; }
+
+.login { margin: 14px 0 4px; min-height: 48px; }
+.pay-with { font-size: 14px; color: var(--muted); margin-top: 14px; }
+
+.note {
+  border-radius: 10px; padding: 12px 14px; margin: 0 0 14px; font-size: 15px;
+  background: #f4f6f5; border: 1px solid var(--line);
+}
+.note.bad { background: #fdeceb; border-color: #f3c7c3; color: var(--bad); }
+
+.result { text-align: center; padding: 8px 0 4px; }
+.result .big { font-size: 30px; font-weight: 800; margin: 6px 0; }
+.result.good .big { color: var(--good); }
+.result.bad .big { color: var(--bad); font-size: 22px; }
+.result.info .big, .result.wait .big { font-size: 20px; }
+
+.spinner {
+  width: 28px; height: 28px; margin: 6px auto 10px; border-radius: 50%;
+  border: 3px solid var(--line); border-top-color: var(--felt);
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 10px; }
+
+.small { font-size: 12.5px; color: var(--muted); padding: 0 18px 18px; }
+
+@media (max-width: 360px) {
+  body { padding: 12px 8px; }
+  #screen { padding: 14px; }
+  .pack { padding: 10px 12px; }
+  .btn-pay { min-width: 92px; padding: 10px 12px; }
+}

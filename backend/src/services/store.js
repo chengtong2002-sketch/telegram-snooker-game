@@ -14,9 +14,12 @@ import { starsEnabledFor } from './stars.js';
 
 export const KINDS = Object.freeze(['cue', 'ball']);
 
-/** Packs as the client sees them: ids, coins and prices, no internal fields. */
+/**
+ * Packs as the Mini App sees them: ids, coins and Stars prices. No MYR prices:
+ * inside Telegram coins are sold for Stars only (docs/topup-web-plan.md).
+ */
 export const packsOnSale = () => config.store.packs.map((p) => ({
-  id: p.id, coins: p.coins, stars: p.stars, myrSen: p.myrSen,
+  id: p.id, coins: p.coins, stars: p.stars,
 }));
 
 export async function storeView(userId) {
@@ -42,7 +45,6 @@ export async function storeView(userId) {
     })),
     packs: packsOnSale(),
     starsEnabled: starsEnabledFor(user),
-    rmEnabled: config.rm.enabled,
   };
 }
 

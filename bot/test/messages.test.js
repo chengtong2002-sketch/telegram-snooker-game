@@ -7,7 +7,7 @@ import {
   welcomeMessage, helpMessage, leaderboardMessage, walletLinkedMessage, walletUnlinkedMessage,
   statusMessage, statusMatchMessage,
   matchedMessage, yourTurnMessage, frameCheckpointMessage, matchOverMessage, matchAbandonedMessage, walletChangedMessage,
-  coinsAddedMessage, paySupportMessage, termsMessage,
+  coinsAddedMessage, balanceUpdatedMessage, paySupportMessage, termsMessage,
 } from '../src/messages.js';
 
 /**
@@ -75,6 +75,7 @@ const ALL = {
   }),
   'match abandoned': () => matchAbandonedMessage({ framesWon: [0, 0], timeouts: HOSTILE }),
   'coins added': () => coinsAddedMessage({ coins: 100, balance: 350 }),
+  'balance updated': () => balanceUpdatedMessage({ coins: 100 }),
   paysupport: () => paySupportMessage({ supportHandle: HOSTILE }),
   'paysupport (no handle)': () => paySupportMessage(),
   terms: () => termsMessage(),

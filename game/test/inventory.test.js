@@ -8,7 +8,7 @@ test('every history type reads as a plain line', () => {
   assert.equal(historyLabel({ type: 'item', itemName: 'Pearl' }), 'Bought Pearl');
   assert.equal(historyLabel({ type: 'item', itemName: null }), 'Bought an item');
   assert.equal(historyLabel({ type: 'pack', via: 'stars' }), 'Coin pack · Telegram Stars');
-  assert.equal(historyLabel({ type: 'pack', via: 'card' }), 'Coin pack · card or e-wallet');
+  assert.equal(historyLabel({ type: 'pack', via: 'card' }), 'Coin pack', 'a payment outside Telegram is never named');
   assert.equal(historyLabel({ type: 'pack', via: null }), 'Coin pack');
   assert.equal(historyLabel({ type: 'refund', via: 'stars' }), 'Refund · Telegram Stars');
   assert.equal(historyLabel({ type: 'grant' }), 'Coins from Snooker');

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import { useTestDatabase } from '@snooker/db/testing';
+import { widgetLoginFor } from './helpers/widgetLogin.js';
 
 /* Two key pairs, as in real life: ours signs requests to RM, RM's signs its webhooks. */
 const pemPair = () => {
@@ -29,7 +30,10 @@ process.env.RM_STORE_ID = '1234567890';
 process.env.RM_PRIVATE_KEY = ours.private.replace(/\n/g, '\\n');
 process.env.RM_SERVER_PUBLIC_KEY = rmServer.public;
 process.env.PUBLIC_BACKEND_URL = 'https://backend.example/';
-process.env.RM_RETURN_APP_URL = 'https://t.me/snookerPlayBot/play';
+process.env.RM_WEB_RETURN_URL = 'https://game.example/topup/done';
+delete process.env.RM_WEB_METHODS; // the default: TNG only
+const BOT_TOKEN = '424242:RM-test-token';
+process.env.BOT_TOKEN = BOT_TOKEN;
 
 const { closeDb, migrate, getDb } = await import('@snooker/db');
 const { buildApp } = await import('../src/app.js');
@@ -155,13 +159,21 @@ async function call(p, {
 }
 
 let nextTg = 61_000;
+/**
+ * A player who has opened the Mini App once (appToken) and then logged in on
+ * the web top-up page (token): RM orders start only there.
+ */
 async function player() {
   const tg = nextTg++;
   const { body } = await call('/api/auth/telegram', { method: 'POST', body: { devUser: { id: tg, first_name: `R${tg}` } } });
-  return { token: body.token, userId: body.user.id, tg };
+  const web = await call('/api/topup/login', { method: 'POST', body: widgetLoginFor(tg, BOT_TOKEN) });
+  assert.equal(web.status, 200, JSON.stringify(web.body));
+  return {
+    token: web.body.token, appToken: body.token, userId: body.user.id, tg,
+  };
 }
 
-const order = (p, packId = 'coins-100', extra = {}) => call('/api/payments/rm/orders', {
+const order = (p, packId = 'coins-100', extra = {}) => call('/api/topup/orders', {
   method: 'POST', token: p.token, body: { packId, ...extra },
 });
 const ledger = (userId) => getDb()('coin_ledger').where({ user_id: userId }).orderBy('id');
@@ -278,7 +290,7 @@ test('ten callers at once make one token request; it is renewed before it runs o
 /* ---------- creating an order ---------- */
 
 
-test('a top-up is priced by the server in cents and sent to RM as MOBILE_PAYMENT, signed', async () => {
+test('a top-up is priced by the server in cents and sent to RM as a TNG web checkout, signed', async () => {
   const p = await player();
   rm.badSignatures = 0;
   const res = await order(p, 'coins-550', { myrSen: 1, coins: 999999, amount: 1 });
@@ -292,14 +304,15 @@ test('a top-up is priced by the server in cents and sent to RM as MOBILE_PAYMENT
   const sent = rm.checkouts.get(res.body.orderId);
   assert.equal(rm.badSignatures, 0, 'RM accepted our signature over the sorted body');
   assert.equal(rm.calls.find((c) => c.url.endsWith('/payment/online'))?.url, 'https://sb-open.revenuemonster.my/v3/payment/online');
-  assert.equal(sent.type, 'MOBILE_PAYMENT');
+  assert.equal(sent.type, 'WEB_PAYMENT', 'no device said: the QR page');
+  assert.deepEqual(sent.method, ['TNG_MY']);
   assert.equal(sent.layoutVersion, 'v4');
   assert.equal(sent.order.amount, 1990, 'RM 19.90 in cents');
   assert.equal(sent.order.currencyType, 'MYR');
   assert.equal(sent.order.id, res.body.orderId);
   assert.ok(sent.order.title.length <= 32);
   assert.equal(sent.storeId, '1234567890');
-  assert.equal(sent.redirectUrl, `https://t.me/snookerPlayBot/play?startapp=store_${res.body.orderId}`);
+  assert.equal(sent.redirectUrl, `https://game.example/topup/done?order=${res.body.orderId}`);
   assert.equal(sent.notifyUrl, 'https://backend.example/webhooks/rm');
   assert.doesNotMatch(JSON.stringify(sent), /'/, 'no apostrophes: RM\'s PHP signer escapes them, JS does not');
 
@@ -556,14 +569,14 @@ test('polling an order is read-only, asks nothing of RM, and only the owner can 
   const { body: o } = await order(p);
   rm.txns.set(o.orderId, txnFor(o.orderId, 490));
   const callsBefore = rm.calls.length;
-  const waiting = await call(`/api/payments/orders/${o.orderId}`, { token: p.token });
+  const waiting = await call(`/api/topup/orders/${o.orderId}`, { token: p.token });
   assert.equal(waiting.status, 200);
   assert.equal(waiting.body.status, 'pending');
   assert.equal(rm.calls.length, callsBefore);
-  assert.equal((await call(`/api/payments/orders/${o.orderId}`, { token: other.token })).status, 404);
+  assert.equal((await call(`/api/topup/orders/${o.orderId}`, { token: other.token })).status, 404);
 
   await postWebhook(signedWebhook(notifyBody(o.orderId, 490)));
-  const done = await call(`/api/payments/orders/${o.orderId}`, { token: p.token });
+  const done = await call(`/api/topup/orders/${o.orderId}`, { token: p.token });
   assert.equal(done.body.status, 'paid');
   assert.equal(done.body.balance, 100);
 });
@@ -662,7 +675,8 @@ test('with the flag off the webhook is gone and nothing can be ordered', async (
   const p = await player();
   config.rm.enabled = false;
   try {
-    assert.equal((await order(p)).status, 503);
+    assert.equal((await order(p)).status, 404, 'the top-up routes are gone');
+    assert.equal((await call('/api/topup/packs')).status, 404);
     assert.equal((await postWebhook(signedWebhook(notifyBody('x', 1)))).status, 404);
     assert.deepEqual(await rmPay.reconcileRm(), { checked: 0 });
     assert.equal((await call('/api/health')).status, 200, 'the rest of the app is untouched');
@@ -678,7 +692,7 @@ test('the flag is off unless set, and on without its keys the backend refuses to
   assert.deepEqual(rmConfigProblems(full), []);
   assert.deepEqual(rmConfigProblems({ enabled: false }), [], 'off needs nothing');
   const problems = rmConfigProblems({
-    ...full, clientSecret: '', privateKey: 'nope', serverPublicKey: '', publicBackendUrl: 'http://plain', returnAppUrl: 'x',
+    ...full, clientSecret: '', privateKey: 'nope', serverPublicKey: '', publicBackendUrl: 'http://plain', webReturnUrl: 'x',
   });
   assert.equal(problems.length, 5, problems.join('\n'));
 });

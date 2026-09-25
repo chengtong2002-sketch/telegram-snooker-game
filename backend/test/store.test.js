@@ -70,7 +70,8 @@ test('a new player: 0 coins, owns and wears only the defaults, sees the packs', 
     assert.equal(item.equipped, item.id === 'club-ash' || item.id === 'club-white', item.id);
     assert.ok(['cue', 'ball'].includes(item.kind));
   }
-  assert.deepEqual(body.packs, DEFAULT_PACKS.map((pk) => ({ ...pk })));
+  // Stars prices only: the Mini App never shows or links another way to pay (docs/topup-web-plan.md).
+  assert.deepEqual(body.packs, DEFAULT_PACKS.map(({ id, coins, stars }) => ({ id, coins, stars })));
 });
 
 /* ---------- buying ---------- */
