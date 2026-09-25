@@ -154,6 +154,25 @@ test('a payment credits once, however many times it is reported', async () => {
   assert.equal(reuse.body.ok, false, 'a paid invoice cannot be paid again');
 });
 
+test('a real-length charge id (~140 characters, over the old 100/128 limits) is credited and refunded, on Postgres too', async () => {
+  // The shape of the first live one (Sep 25), which the old 100-character
+  // limit and the varchar(128) columns refused: the Stars were taken, no coins.
+  const chargeId = `stxh75cHdexWUjtvE8BmEFXyE5oivQTjSiPvQQ1Xe2JyFKlcewxH7GcMYVUAEQOPJIqxWkpglWWOsYiv6AH6BVk6PgIIckJ4HyL9AQURs73LXMT5IcrRBhEVlkUND_nRDph${nextTg}`;
+  assert.ok(chargeId.length > 128, 'longer than both old limits (100, varchar 128)');
+  const p = await player();
+  const { inv, done } = await buyPack(p, 'coins-100', chargeId);
+  assert.equal(done.status, 'credited', JSON.stringify(done));
+  assert.equal((await getDb()('payment_orders').where({ id: inv.orderId }).first()).provider_txn_id, chargeId);
+  const refund = await refundStarsOrder(inv.orderId, { actor: 'test' });
+  assert.notEqual(refund.status, 'provider_error', JSON.stringify(refund));
+  assert.deepEqual(await ledgerRefs(p.userId), [`stars:${chargeId}`, `stars-refund:${chargeId}`]);
+  assert.equal(await balanceOf(p.userId), 0);
+  // Still a limit: anything absurd is a malformed call.
+  assert.equal((await paid({
+    orderId: inv.orderId, telegramId: p.tg, currency: 'XTR', totalAmount: 100, chargeId: 'x'.repeat(201),
+  })).status, 400);
+});
+
 test('pre-checkout refuses anything that does not match the order', async () => {
   const p = await player();
   const other = await player();

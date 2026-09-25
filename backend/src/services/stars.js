@@ -33,6 +33,12 @@ export { OPEN_ORDER_LIMIT, DAILY_ORDER_LIMIT };
 export const STARS_ORDER_TTL_MS = 60 * 60 * 1000;
 /** An open invoice is offered again only with this long left, so it cannot lapse mid-payment. */
 const REUSE_MIN_LEFT_MS = 5 * 60 * 1000;
+/**
+ * Longest telegram_payment_charge_id we accept. Real ones are about 140
+ * characters (the first live payment was refused at the old limit of 100);
+ * the columns that hold them are varchar(255) (migration 000007).
+ */
+const MAX_CHARGE_ID = 200;
 
 const newOrderId = () => `st${randomBytes(11).toString('hex')}`; // 24 characters, RM's limit too
 
@@ -120,7 +126,7 @@ export async function createStarsInvoice(userId, packId) {
   }
 
   await db('payment_orders').where({ id: orderId }).update({
-    status: 'pending', provider_checkout_id: String(invoiceLink).slice(0, 128),
+    status: 'pending', provider_checkout_id: String(invoiceLink).slice(0, 255),
   });
   await logEvent({ orderId, source: 'api', event: 'invoice', outcome: 'pending', payload: { packId: pack.id, stars: pack.stars } });
   return {
@@ -177,7 +183,7 @@ export async function checkPreCheckout({
 export async function recordStarsPayment({
   orderId, telegramId, currency, totalAmount, chargeId, source = 'bot',
 }) {
-  if (typeof chargeId !== 'string' || !chargeId || chargeId.length > 100) return { status: 'bad_request' };
+  if (typeof chargeId !== 'string' || !chargeId || chargeId.length > MAX_CHARGE_ID) return { status: 'bad_request' };
   const { order, user, sameUser } = await orderFor(orderId, telegramId);
   const payload = {
     orderId, telegramId, currency, totalAmount, chargeId,

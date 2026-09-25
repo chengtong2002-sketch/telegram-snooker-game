@@ -40,7 +40,7 @@ export async function recordEntry({ userId, delta, reason, ref, actor = null, no
   if (!Number.isSafeInteger(delta) || delta === 0 || Math.sign(delta) !== sign) {
     throw new Error(`a ${reason} entry needs a ${sign > 0 ? 'positive' : 'negative'} whole number, got ${delta}`);
   }
-  if (typeof ref !== 'string' || !ref || ref.length > 128) throw new Error('a ledger entry needs a ref of 1-128 characters');
+  if (typeof ref !== 'string' || !ref || ref.length > 255) throw new Error('a ledger entry needs a ref of 1-255 characters'); // varchar(255), migration 000007
 
   const inserted = await db('coin_ledger')
     .insert({ user_id: userId, delta, reason, ref, actor, note })
