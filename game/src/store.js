@@ -205,7 +205,7 @@ function paint() {
     el.note.textContent = 'Coins buy cues and cue balls, and nothing else: they never affect matches or rewards. '
       + (data.rmEnabled
         ? "Paid in ringgit with Touch 'n Go, on a secure payment page. Purchases are final; see /terms in the bot."
-        : 'Buying coins is coming soon.');
+        : "Ringgit payments (Touch 'n Go) open soon.");
     return;
   }
 
@@ -271,13 +271,14 @@ function packRow(pack) {
   const action = node('div', 'item-action pack-prices');
 
   const onSale = session.data?.rmEnabled && pack.myrSen;
-  const pay = node('button', 'item-btn', onSale ? myr(pack.myrSen) : 'Soon');
+  // The ringgit price shows even while payments are off (the user's call, Sep 27): greyed out then.
+  const pay = node('button', 'item-btn', pack.myrSen ? myr(pack.myrSen) : 'Soon');
   if (onSale) {
     pay.setAttribute('aria-label', `Buy ${fmt(pack.coins)} coins for ${myr(pack.myrSen)}`);
     pay.onclick = () => buyPackRm(pack);
   } else {
     pay.disabled = true;
-    pay.title = 'Coming soon';
+    pay.title = 'Ringgit payments open soon';
   }
   action.append(pay);
   li.append(amount, action);

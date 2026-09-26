@@ -231,7 +231,7 @@ try {
   check(JSON.stringify(state4.orderBodies) === JSON.stringify([{ packId: 'coins-1200', device: 'mobile' }]), `Telegram on Android asks for the TNG app (${JSON.stringify(state4.orderBodies)})`);
   await both.close();
 
-  /* ---------- switched off: every pack says Soon, nothing can be bought ---------- */
+  /* ---------- switched off: ringgit prices shown, greyed out, nothing can be bought ---------- */
   const off = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const page3 = await off.newPage();
   const state3 = newState({ rmEnabled: false });
@@ -243,8 +243,9 @@ try {
   await page3.locator('#store .item-pack').first().waitFor();
   const offLabels = await page3.locator('#store .item-pack button').allInnerTexts();
   const offDisabled = await page3.locator('#store .item-pack button').evaluateAll((els) => els.every((el) => el.disabled));
-  check(offLabels.length === 3 && offLabels.every((l) => l === 'Soon') && offDisabled, `RM off: every pack is Soon and disabled (${offLabels.join(', ')})`);
-  check((await page3.locator('#store-note').innerText()).includes('coming soon'), 'RM off: the note says buying is coming soon');
+  check(JSON.stringify(offLabels) === JSON.stringify(['RM 4.90', 'RM 19.90', 'RM 39.90']) && offDisabled, `RM off: ringgit prices shown but disabled (${offLabels.join(', ')})`);
+  check((await page3.locator('#store-note').innerText()).includes('open soon'), 'RM off: the note says payments open soon');
+  await page3.screenshot({ path: shot('off-390') });
   await off.close();
 } finally {
   await browser.close();
