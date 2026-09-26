@@ -4,8 +4,9 @@
  * Not the rm-api-sdk package: it pins axios 0.18 and has no webhook check. This
  * is node:crypto + fetch, and fetch is injected so tests run against a fake RM.
  *
- * SANDBOX ONLY. The two hosts below are constants on purpose: no setting can
- * point this at production, so going live is a code change with a review.
+ * Sandbox unless RM_ENV is exactly "production" (config.rm.live). The hosts are
+ * constants: the setting picks one of the two pairs below and can point nowhere
+ * else. Live means real money: our live keys, and RM's live server key.
  *
  * Signing (RM "Signature Algorithm"): the body's keys sorted at every level,
  * compact JSON with < > & written as < > &, base64. Then
@@ -16,8 +17,12 @@
  */
 import { createSign, createVerify, randomBytes } from 'node:crypto';
 
-export const RM_OAUTH_URL = 'https://sb-oauth.revenuemonster.my/v1';
-export const RM_OPEN_URL = 'https://sb-open.revenuemonster.my/v3';
+export const RM_HOSTS = Object.freeze({
+  sandbox: Object.freeze({ oauth: 'https://sb-oauth.revenuemonster.my/v1', open: 'https://sb-open.revenuemonster.my/v3' }),
+  production: Object.freeze({ oauth: 'https://oauth.revenuemonster.my/v1', open: 'https://open.revenuemonster.my/v3' }),
+});
+export const RM_OAUTH_URL = RM_HOSTS.sandbox.oauth;
+export const RM_OPEN_URL = RM_HOSTS.sandbox.open;
 
 /** An RM call that failed: RM's error code when it sent one, else HTTP or network. */
 export class RmApiError extends Error {
@@ -109,8 +114,9 @@ export const refreshAfterMs = (expiresInSec) => {
 };
 
 export function createRmClient({
-  clientId, clientSecret, privateKey, fetch = globalThis.fetch, now = Date.now, timeoutMs = 15_000,
+  clientId, clientSecret, privateKey, live = false, fetch = globalThis.fetch, now = Date.now, timeoutMs = 15_000,
 }) {
+  const hosts = live === true ? RM_HOSTS.production : RM_HOSTS.sandbox;
   let cached = null; // { token, refreshAt }
   let inflight = null;
 
@@ -127,7 +133,7 @@ export function createRmClient({
 
   async function fetchToken() {
     const basic = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-    const { res, body } = await send('token', `${RM_OAUTH_URL}/token`, {
+    const { res, body } = await send('token', `${hosts.oauth}/token`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Basic ${basic}` },
       body: JSON.stringify({ grantType: 'client_credentials' }),
@@ -147,7 +153,7 @@ export function createRmClient({
   }
 
   async function call(what, method, path, body = null, { retried = false } = {}) {
-    const requestUrl = `${RM_OPEN_URL}${path}`;
+    const requestUrl = `${hosts.open}${path}`;
     const nonceStr = randomBytes(16).toString('hex'); // 32 characters
     const timestamp = String(Math.floor(now() / 1000));
     const signature = sign(privateKey, {

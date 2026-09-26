@@ -88,20 +88,24 @@ export const config = {
       .split(',').map((s) => s.trim()).filter((s) => /^\d+$/.test(s))),
   },
 
-  // Revenue Monster (MYR), sandbox only: the hosts are fixed in
-  // services/rm/client.js and nothing here can point them at production.
+  // Revenue Monster (MYR). Sandbox unless RM_ENV is exactly "production": then
+  // RM's live hosts (fixed in services/rm/client.js), and real money.
   rm: {
     enabled: bool(process.env.PAYMENTS_RM_ENABLED, false),
+    live: (process.env.RM_ENV ?? '').trim() === 'production',
     clientId: (process.env.RM_CLIENT_ID ?? '').trim(),
     clientSecret: (process.env.RM_CLIENT_SECRET ?? '').trim(),
     storeId: (process.env.RM_STORE_ID ?? '').trim(),
     privateKey: pem(process.env.RM_PRIVATE_KEY),
     serverPublicKey: pem(process.env.RM_SERVER_PUBLIC_KEY),
     publicBackendUrl: (process.env.PUBLIC_BACKEND_URL ?? '').trim().replace(/\/+$/, ''),
-    // The web top-up page's "done" screen (docs/topup-web-plan.md): RM's
-    // redirectUrl is <this>?order=<orderId>. RM checkouts start only there.
+    // The web top-up page's "done" screen (docs/topup-web-plan.md): for a
+    // checkout started there, RM's redirectUrl is <this>?order=<orderId>.
     webReturnUrl: (process.env.RM_WEB_RETURN_URL ?? '').trim().replace(/\/+$/, ''),
-    // RM method codes offered on the web page, comma-separated. TNG only for now.
+    // For a checkout started in the Mini App's store: back into the Mini App,
+    // <this>?startapp=store_<orderId>. t.me/<bot> opens the bot's main Mini App.
+    returnAppUrl: (process.env.RM_RETURN_APP_URL ?? 'https://t.me/snookerPlayBot').trim().replace(/\/+$/, ''),
+    // RM method codes offered at checkout (web page and Mini App), comma-separated. TNG only for now.
     webMethods: (process.env.RM_WEB_METHODS ?? 'TNG_MY').split(',').map((s) => s.trim()).filter(Boolean),
   },
 
@@ -189,6 +193,9 @@ export function rmConfigProblems(rm = config.rm) {
   }
   if (!/^https:\/\/[^/?#]+(\/[^?#]*)?$/.test(rm.webReturnUrl)) {
     problems.push('RM_WEB_RETURN_URL must be the https address of the top-up page\'s done screen, with no query');
+  }
+  if (!/^https:\/\/t\.me\/[A-Za-z0-9_]{5,32}(\/[A-Za-z0-9_]{3,64})?$/.test(rm.returnAppUrl)) {
+    problems.push('RM_RETURN_APP_URL must be a Mini App link like https://t.me/<bot> or https://t.me/<bot>/<app>');
   }
   if (rm.webMethods.length === 0 || rm.webMethods.some((m) => !/^[A-Z0-9_]{2,32}$/.test(m))) {
     problems.push('RM_WEB_METHODS must be RM method codes like TNG_MY, comma-separated');

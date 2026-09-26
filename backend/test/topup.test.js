@@ -1,8 +1,8 @@
 /**
  * The web top-up page's API (docs/topup-web-plan.md): the Telegram Login
- * Widget check, the narrow top-up session, the order options, and the Mini App
- * no longer offering MYR at all. The money path itself (webhook, reconciler,
- * refunds) runs through these same routes in rmPayments.test.js.
+ * Widget check, the narrow top-up session and the order options; and the same
+ * RM checkout started from the Mini App's store (Sep 26). The money path itself
+ * (webhook, reconciler, refunds) runs through the web routes in rmPayments.test.js.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -268,17 +268,81 @@ test('an unknown pack is 404, and nobody sees another player\'s order', async ()
   assert.equal((await call(`/api/topup/orders/${body.orderId}`, { token: q.token })).status, 404);
 });
 
-/* ---------- the Mini App offers Stars only ---------- */
+/* ---------- the Mini App's store sells MYR too (Sep 26) ---------- */
 
-test('the Mini App\'s store has no MYR price or switch, and its RM routes are gone', async () => {
+const appOrder = (p, body) => call('/api/payments/rm/orders', { method: 'POST', token: p.appToken, body });
+
+test("the Mini App's store lists MYR prices and says RM is on", async () => {
   const p = await appPlayer();
   const store = await call('/api/store', { token: p.appToken });
   assert.equal(store.status, 200);
-  assert.equal('rmEnabled' in store.body, false);
-  for (const pack of store.body.packs) assert.equal('myrSen' in pack, false, pack.id);
-  assert.doesNotMatch(JSON.stringify(store.body), /myr|ringgit|topup|revenue/i);
-  assert.equal((await call('/api/payments/rm/orders', { method: 'POST', token: p.appToken, body: { packId: 'coins-100' } })).status, 404);
-  assert.equal((await call('/api/payments/orders/rm0000000000000000000000', { token: p.appToken })).status, 404);
+  assert.equal(store.body.rmEnabled, true);
+  assert.deepEqual(store.body.packs.map((pack) => [pack.id, pack.myrSen, pack.stars]), [
+    ['coins-100', 490, 100], ['coins-550', 1990, 400], ['coins-1200', 3990, 800],
+  ]);
+});
+
+test('a Mini App checkout: phone → TNG app, computer → QR; back into the store; price and coins from config', async () => {
+  const p = await appPlayer();
+  const sent = async (body) => {
+    const res = await appOrder(p, body);
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    return { res: res.body, rm: checkouts.get(res.body.orderId) };
+  };
+  const phone = await sent({ packId: 'coins-100', device: 'mobile' });
+  assert.equal(phone.rm.type, 'MOBILE_PAYMENT');
+  assert.equal(phone.rm.redirectUrl, `https://t.me/snookerPlayBot?startapp=store_${phone.res.orderId}`);
+  assert.equal(phone.rm.notifyUrl, 'https://backend.example/webhooks/rm');
+  const pc = await sent({ packId: 'coins-100', device: 'desktop' });
+  assert.equal(pc.rm.type, 'WEB_PAYMENT');
+  const junk = await sent({ packId: 'coins-550', coins: 99999, myrSen: 1, method: ['FPX_MY'], type: 'MOBILE_PAYMENT' });
+  assert.equal(junk.rm.type, 'WEB_PAYMENT');
+  assert.deepEqual(junk.rm.method, ['TNG_MY']);
+  assert.equal(junk.rm.order.amount, 1990);
+  assert.equal(junk.res.coins, 550);
+  // The order is this player's, at the configured price.
+  const row = await getDb()('payment_orders').where({ id: junk.res.orderId }).first();
+  assert.equal(Number(row.user_id), Number(p.userId));
+  assert.equal(Number(row.amount), 1990);
+});
+
+test('a test price set in COIN_PACKS is what RM is asked for', async () => {
+  const p = await appPlayer();
+  const saved = config.store.packs;
+  config.store.packs = saved.map((pack) => ({ ...pack, myrSen: 100 }));
+  try {
+    const res = await appOrder(p, { packId: 'coins-1200', device: 'mobile' });
+    assert.equal(res.status, 200);
+    assert.equal(checkouts.get(res.body.orderId).order.amount, 100);
+    assert.equal(res.body.coins, 1200);
+  } finally {
+    config.store.packs = saved;
+  }
+});
+
+test("the store follows only the player's own Mini App orders; the web token cannot start one", async () => {
+  const p = await appPlayer();
+  const q = await appPlayer();
+  const { body } = await appOrder(p, { packId: 'coins-100', device: 'mobile' });
+  const mine = await call(`/api/payments/orders/${body.orderId}`, { token: p.appToken });
+  assert.equal(mine.status, 200);
+  assert.equal(mine.body.status, 'pending');
+  assert.equal((await call(`/api/payments/orders/${body.orderId}`, { token: q.appToken })).status, 404);
+  assert.equal((await appOrder(p, { packId: 'coins-7' })).status, 404);
+  const web = await webPlayer();
+  assert.equal((await call('/api/payments/rm/orders', { method: 'POST', token: web.token, body: { packId: 'coins-100' } })).status, 401);
+  assert.equal((await call('/api/payments/rm/orders', { method: 'POST', body: { packId: 'coins-100' } })).status, 401);
+});
+
+test('with RM off the Mini App store says so and a checkout is 503', async () => {
+  const p = await appPlayer();
+  config.rm.enabled = false;
+  try {
+    assert.equal((await call('/api/store', { token: p.appToken })).body.rmEnabled, false);
+    assert.equal((await appOrder(p, { packId: 'coins-100' })).status, 503);
+  } finally {
+    config.rm.enabled = true;
+  }
 });
 
 /* ---------- the flag and the config ---------- */
@@ -308,4 +372,15 @@ test('RM on without a web return URL, or with a bad method code, refuses to star
   assert.equal(rmConfigProblems({ ...full, webMethods: ['tng_my'] }).length, 1);
   assert.equal(rmConfigProblems({ ...full, webMethods: [] }).length, 1);
   assert.equal(rmConfigProblems({ ...full, webMethods: ['TNG_MY', 'BOOST_MY'] }).length, 0);
+});
+
+test('RM_RETURN_APP_URL must be a t.me Mini App link', () => {
+  const full = { ...config.rm };
+  for (const good of ['https://t.me/snookerPlayBot', 'https://t.me/snookerPlayBot/play']) {
+    assert.deepEqual(rmConfigProblems({ ...full, returnAppUrl: good }), [], good);
+  }
+  for (const bad of ['', 'http://t.me/snookerPlayBot', 'https://evil.example/snookerPlayBot',
+    'https://t.me/snookerPlayBot?startapp=x', 'https://t.me/a/b/c']) {
+    assert.equal(rmConfigProblems({ ...full, returnAppUrl: bad }).length, 1, bad);
+  }
 });

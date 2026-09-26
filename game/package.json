@@ -14,6 +14,7 @@
     "smoke:offline": "node test/drive-offline.mjs",
     "smoke:store": "node test/drive-store.mjs",
     "smoke:quit": "node test/drive-quit.mjs",
+    "smoke:rm": "node test/drive-rm.mjs",
     "smoke:aim": "node test/drive-aim.mjs",
     "smoke:inventory": "node test/drive-inventory.mjs",
     "smoke:topup": "node test/drive-topup.mjs",

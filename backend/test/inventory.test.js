@@ -104,7 +104,7 @@ test('history: newest first, typed, with the running balance, and nothing intern
   assert.equal(status, 200);
   assert.equal(body.next, null);
   assert.deepEqual(body.entries.map((e) => [e.type, e.via ?? e.itemId ?? null, e.delta, e.balanceAfter]), [
-    ['pack', null, 550, 1250],
+    ['pack', 'card', 550, 1250],
     ['refund', 'stars', -100, 700],
     ['pack', 'stars', 100, 800],
     ['item', 'gold-band', -500, 700],

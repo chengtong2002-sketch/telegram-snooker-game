@@ -58,9 +58,7 @@ export async function inventoryView(userId) {
  */
 export function describeEntry(row) {
   const ref = String(row.ref);
-  // Only Stars is named: the Mini App never mentions a payment made outside
-  // Telegram (docs/topup-web-plan.md), so an RM pack reads as a plain "Coin pack".
-  const via = ref.startsWith('stars') ? 'stars' : null;
+  const via = ref.startsWith('stars') ? 'stars' : (ref.startsWith('rm') ? 'card' : null);
   if (row.reason === 'spend') {
     const itemId = ref.split(':')[2] ?? null;
     return { type: 'item', itemId, itemName: itemById(itemId)?.name ?? null };

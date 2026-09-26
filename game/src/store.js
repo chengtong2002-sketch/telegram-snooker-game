@@ -12,7 +12,7 @@ import catalog from '@snooker/cosmetics/cosmetics.json';
 import * as api from './api.js';
 import { itemSvg, svgDataUrl } from './skinLoader.js';
 import {
-  showBackButton, haptic, canPayInvoices, openInvoice,
+  showBackButton, haptic, canPayInvoices, openInvoice, openExternal, deviceKind,
 } from './telegram.js';
 import {
   historyLabel, formatDelta, formatWhen, ownedByKind, equippedPair,
@@ -20,6 +20,7 @@ import {
 
 const $ = (id) => document.getElementById(id);
 const fmt = (n) => Number(n ?? 0).toLocaleString('en');
+const myr = (sen) => `RM ${(Number(sen) / 100).toFixed(2)}`;
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 const catalogItems = new Map([...catalog.cues, ...catalog.cueBalls].map((item) => [item.id, item]));
@@ -70,12 +71,13 @@ let session = null;
  * @param {object} opts
  * @param {import('./hud.js').Hud} opts.hud
  * @param {'cue'|'ball'|'coins'|'inventory'} [opts.tab]
+ * @param {string} [opts.orderId] a TNG / card payment to follow (back from RM's checkout)
  * @param {(change: {balance: number, equipped?: object}) => void} [opts.onChange]
  *        after every server answer, so the lobby chip and the drawn skins follow
  * @param {() => void} [opts.onClose]
  */
 export async function openStore({
-  hud, tab = 'cue', onChange, onClose,
+  hud, tab = 'cue', orderId = null, onChange, onClose,
 } = {}) {
   const el = elements();
   session = {
@@ -91,6 +93,7 @@ export async function openStore({
   el.root.scrollTop = 0;
   paint();
   await reload();
+  if (orderId) watchOrder(session, orderId);
 }
 
 export function closeStore() {
@@ -200,7 +203,7 @@ function paint() {
   if (tab === 'coins') {
     el.list.replaceChildren(...data.packs.map(packRow));
     el.note.textContent = 'Coins buy cues and cue balls, and nothing else: they never affect matches or rewards. '
-      + (starsNote(data) ?? 'Paid with Telegram Stars. Purchases are final; see /terms in the bot.');
+      + payNote(data);
     return;
   }
 
@@ -255,17 +258,21 @@ function itemRow(item) {
   return li;
 }
 
-/**
- * One coin pack. Telegram Stars only: Telegram requires Stars for digital goods
- * inside a Mini App, so no other price or way to pay is ever shown or linked
- * here (docs/topup-web-plan.md).
- */
+/** One coin pack: a ringgit button (TNG / card through Revenue Monster) and a Stars button, where each is on. */
 function packRow(pack) {
   const li = node('li', 'store-item item-pack');
   const amount = node('div', 'pack-amount');
   amount.append(coin(), node('span', null, `${fmt(pack.coins)} coins`));
   const action = node('div', 'item-action pack-prices');
   const data = session.data;
+
+  const rm = data?.rmEnabled && pack.myrSen;
+  if (rm) {
+    const pay = node('button', 'item-btn', myr(pack.myrSen));
+    pay.setAttribute('aria-label', `Buy ${fmt(pack.coins)} coins for ${myr(pack.myrSen)}`);
+    pay.onclick = () => buyPackRm(pack);
+    action.append(pay);
+  }
 
   const buy = node('button', 'item-btn', pack.stars ? `⭐ ${fmt(pack.stars)}` : 'Soon');
   const why = !pack.stars ? 'Not on sale yet' : starsNote(data);
@@ -275,9 +282,18 @@ function packRow(pack) {
     buy.setAttribute('aria-label', `Buy ${fmt(pack.coins)} coins for ${fmt(pack.stars)} Stars`);
     buy.onclick = () => buyPack(pack);
   }
-  action.append(buy);
+  // With ringgit on, an unusable Stars button is noise: leave it out.
+  if (!(why && rm)) action.append(buy);
   li.append(amount, action);
   return li;
+}
+
+/** The line under the coin packs: how they are paid for. */
+function payNote(data) {
+  const stars = !starsNote(data);
+  if (data?.rmEnabled && stars) return "Pay in ringgit with Touch 'n Go, or with Telegram Stars. Purchases are final; see /terms in the bot.";
+  if (data?.rmEnabled) return "Paid in ringgit with Touch 'n Go, on a secure payment page. Purchases are final; see /terms in the bot.";
+  return starsNote(data) ?? 'Paid with Telegram Stars. Purchases are final; see /terms in the bot.';
 }
 
 /** Why Stars can't be used here, or null when they can. */
@@ -467,6 +483,95 @@ async function buyPack(pack) {
     s.hud.toast(err.offline ? 'No connection. Nothing was charged.' : err.message, 'foul', 4000);
   } finally {
     s.busy = false;
+  }
+}
+
+/**
+ * Buy a coin pack in ringgit: the server opens a Revenue Monster checkout and
+ * the player pays on RM's page in the browser (TNG app on a phone, QR on a
+ * computer). RM sends them back to the Mini App (startapp=store_<orderId>), but
+ * this screen already follows the order in case they just switch back instead.
+ */
+async function buyPackRm(pack) {
+  const s = session;
+  if (!s || s.busy) return;
+  s.busy = true;
+  try {
+    const { orderId, url } = await api.rmOrder(pack.id, deviceKind());
+    if (s !== session) return;
+    openExternal(url);
+    watchOrder(s, orderId, url);
+  } catch (err) {
+    if (s !== session) return;
+    haptic('error');
+    s.hud.toast(err.offline ? 'No connection. Nothing was charged.' : err.message, 'foul', 4000);
+  } finally {
+    s.busy = false;
+  }
+}
+
+/** Order states that will not change any more. */
+const SETTLED = new Set(['paid', 'failed', 'cancelled', 'expired', 'refunded', 'partially_refunded', 'disputed']);
+
+/**
+ * Show "waiting for payment" and ask the server about the order every few
+ * seconds until it settles, the store closes, or ten minutes pass. The sheet
+ * can be closed; the watch keeps going under it.
+ */
+async function watchOrder(s, orderId, url = null) {
+  if (s.watching === orderId) return;
+  s.watching = orderId;
+  let sheetOpen = false;
+  const waiting = () => {
+    sheetOpen = true;
+    s.hud.modal({
+      title: 'Waiting for your payment',
+      body: `<p>Finish paying on the payment page. Your coins show up here as soon as the payment is confirmed.</p>
+             <p class="note">Came back without paying? Nothing is charged; the order simply lapses.</p>`,
+      actions: [
+        ...(url ? [{ label: 'Open payment page', kind: 'primary', onClick: () => openExternal(url) }] : []),
+        { label: 'Close', onClick: () => { sheetOpen = false; s.hud.closeModal(); } },
+      ],
+    });
+  };
+  waiting();
+
+  const deadline = Date.now() + 10 * 60_000;
+  let order = null;
+  while (s === session && s.watching === orderId && Date.now() < deadline) {
+    try {
+      order = await api.paymentOrder(orderId);
+    } catch (err) {
+      if (err.status === 404) break;
+      // A dropped poll changes nothing: try again.
+    }
+    if (s !== session) return;
+    if (order && SETTLED.has(order.status)) break;
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+  if (s !== session || s.watching !== orderId) return;
+  s.watching = null;
+  if (sheetOpen) s.hud.closeModal();
+
+  if (order?.status === 'paid') {
+    haptic('success');
+    await reload();
+    s.hud.toast(`+${fmt(order.coins)} coins`, 'good', 3000);
+  } else if (order && ['failed', 'cancelled', 'expired'].includes(order.status)) {
+    haptic('error');
+    s.hud.modal({
+      title: 'Payment not completed',
+      body: '<p>No coins were added. If money was taken, it is refunded. You can try again any time.</p>',
+      actions: [{ label: 'OK', kind: 'primary', onClick: () => s.hud.closeModal() }],
+    });
+  } else if (order?.status === 'disputed') {
+    s.hud.modal({
+      title: 'We are checking this payment',
+      body: '<p>Something about this payment needs a person to look at it. Use /paysupport in the bot and we will sort it out.</p>',
+      actions: [{ label: 'OK', kind: 'primary', onClick: () => s.hud.closeModal() }],
+    });
+  } else if (order) {
+    s.hud.toast('Still waiting for the payment. Your coins will show here once it is confirmed.', '', 5000);
   }
 }
 

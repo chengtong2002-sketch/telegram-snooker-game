@@ -332,6 +332,7 @@ npm run smoke:game                    # drives a practice frame in a real browse
 npm run smoke:concede -w @snooker/game   # both PvP concede paths, two players at once
 npm run smoke:offline -w @snooker/game   # the offline story; practice makes no requests
 npm run smoke:topup -w @snooker/game     # the web top-up page (/topup, RM + TNG); needs only vite
+npm run smoke:rm -w @snooker/game        # TNG / card in the Mini App's store (phone + desktop); needs only vite
 npm run smoke:aim -w @snooker/game       # live aim: two browsers, plus the practice AI lining up
 npm run smoke:inventory -w @snooker/game # the Inventory tab; DATABASE_URL = the backend's throwaway DB
 npm run smoke:spin -w @snooker/game      # spin control in practice (phone + desktop); needs only vite
@@ -354,7 +355,10 @@ Telegram's login widget and RM's checkout, so it needs only vite. It drives the 
 top-up page (docs/topup-web-plan.md): "not available yet" while RM is off, login,
 the order (pack + device only), the done screen following the order, and 320 /
 390 / desktop. The backend side is `backend/test/topup.test.js` and
-`backend/test/rmPayments.test.js`. The Mini App sells coins for Stars only.
+`backend/test/rmPayments.test.js`. `smoke:rm` does the same for the Mini App's
+store: ringgit buttons beside Stars, the checkout opened outside the webview (TNG app
+on a phone, QR on Telegram Desktop), the waiting sheet, and the trip back
+(`startapp=store_<orderId>`).
 `smoke:aim` pairs two fresh dev players through the API and checks that the
 waiting player's drawn cue follows the shooter's (angle, power, ball in hand),
 freezes and dims when updates stall, and that the practice AI's cue stops exactly

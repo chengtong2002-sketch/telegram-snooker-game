@@ -1,4 +1,5 @@
 /** Thin wrapper over the Telegram WebApp SDK so the game also runs in a plain browser. */
+import { deviceKind as browserDeviceKind } from './topup/logic.js';
 
 const tg = window.Telegram?.WebApp ?? null;
 
@@ -77,8 +78,12 @@ export function launchParams() {
     params.set('mode', 'pvp');
     params.set('match', fromStartParam.slice(4));
   }
-  // "store": the lobby with the store open.
-  if (fromStartParam === 'store') params.set('screen', 'store');
+  // "store", or back from a Revenue Monster checkout: "store_<orderId>".
+  const store = /^store(?:_(rm[0-9a-f]{22}))?$/.exec(fromStartParam);
+  if (store) {
+    params.set('screen', 'store');
+    if (store[1]) params.set('order', store[1]);
+  }
   return {
     // null means "opened with no deep link", which lands on the lobby. Every
     // bot button sets mode (or screen), so those still go straight to the mode
@@ -86,6 +91,8 @@ export function launchParams() {
     mode: params.get('mode'),
     matchId: params.get('match') ?? null,
     screen: params.get('screen') ?? null,
+    // A coin order to follow on the store screen (screen=store).
+    orderId: params.get('order') ?? null,
   };
 }
 
@@ -157,4 +164,34 @@ export function openInvoice(url) {
       resolve('failed');
     }
   });
+}
+
+/**
+ * Open a web page outside the Mini App: RM's checkout belongs in the browser,
+ * not the webview (the TNG hand-off and bank redirects expect a real browser).
+ */
+export function openExternal(url) {
+  if (isTelegram() && typeof tg.openLink === 'function') {
+    try {
+      tg.openLink(url);
+      return;
+    } catch {
+      // Fall through to the plain browser way.
+    }
+  }
+  window.open(url, '_blank', 'noopener');
+}
+
+const PHONE_PLATFORMS = new Set(['ios', 'android', 'android_x']);
+
+/**
+ * Phone or computer, for RM's checkout layout: a phone gets the TNG app, a
+ * computer a QR code to scan. Telegram names its own platform; outside it
+ * (or when it says 'unknown'), the browser's user agent decides.
+ */
+export function deviceKind() {
+  const platform = tg?.platform;
+  if (PHONE_PLATFORMS.has(platform)) return 'mobile';
+  if (platform && platform !== 'unknown') return 'desktop';
+  return browserDeviceKind(navigator.userAgent, navigator.maxTouchPoints);
 }

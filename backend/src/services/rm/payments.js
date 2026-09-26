@@ -1,13 +1,14 @@
 /**
  * Coin top-ups paid in MYR through Revenue Monster (docs/rm-payments-plan.md).
- * SANDBOX ONLY, behind PAYMENTS_RM_ENABLED (off by default, and in production).
+ * Behind PAYMENTS_RM_ENABLED (off by default); sandbox unless RM_ENV=production.
  *
  *   1. createRmOrder: an order row, then an RM checkout (POST /v3/payment/online).
- *      Only the web top-up page starts one (docs/topup-web-plan.md): Telegram
- *      requires Stars for digital goods inside the Mini App, so the Mini App
- *      never offers MYR. WEB_PAYMENT on a desktop (RM shows the TNG QR),
- *      MOBILE_PAYMENT on a phone (RM opens the TNG app).
- *   2. RM sends the player back to the page's done screen
+ *      Started from the Mini App's store (routes/payments.js; the user's call on
+ *      Sep 26, knowing Telegram asks for Stars for digital goods in Mini Apps)
+ *      or from the web top-up page (docs/topup-web-plan.md). WEB_PAYMENT on a
+ *      computer (RM shows the TNG QR), MOBILE_PAYMENT on a phone (RM opens TNG).
+ *   2. RM sends the player back where they started: into the Mini App's store
+ *      (RM_RETURN_APP_URL?startapp=store_<orderId>) or the page's done screen
  *      (RM_WEB_RETURN_URL?order=<orderId>). Whatever status that trip carries
  *      is for display only: nothing here reads it.
  *   3. **Coins are credited by exactly two things, both RM speaking for itself:**
@@ -48,7 +49,7 @@ const rm = () => {
   return client;
 };
 
-/** Tests only: send RM calls to a fake. Hosts stay the sandbox's either way. */
+/** Tests only: send RM calls to a fake (and drop the client, so a changed config.rm.live is picked up). */
 export function useRmFetch(fn) {
   fetchImpl = fn;
   client = null;
@@ -56,8 +57,13 @@ export function useRmFetch(fn) {
 
 const packFor = (packId) => config.store.packs.find((p) => p.id === packId && p.myrSen > 0) ?? null;
 export const notifyUrl = () => `${config.rm.publicBackendUrl}/webhooks/rm`;
-/** Where RM sends the player after paying: the top-up page's done screen, on this order. */
-export const redirectUrl = (orderId) => `${config.rm.webReturnUrl}?order=${orderId}`;
+/**
+ * Where RM sends the player after paying, on this order: back into the Mini
+ * App's store ('app'), or the web top-up page's done screen ('web').
+ */
+export const redirectUrl = (orderId, from = 'web') => (from === 'app'
+  ? `${config.rm.returnAppUrl}?startapp=store_${orderId}`
+  : `${config.rm.webReturnUrl}?order=${orderId}`);
 
 /**
  * How RM shows the checkout. The page says which device it is on; that only
@@ -74,7 +80,7 @@ export const checkoutType = (device) => (device === 'mobile' ? 'MOBILE_PAYMENT' 
  *   too_many_open | daily_limit
  *   provider_error  RM refused or did not answer; the order is marked failed
  */
-export async function createRmOrder(userId, packId, { device = null } = {}) {
+export async function createRmOrder(userId, packId, { device = null, from = 'web' } = {}) {
   if (!config.rm.enabled) return { status: 'disabled' };
   const pack = packFor(packId);
   if (!pack) return { status: 'unknown_pack' };
@@ -102,7 +108,7 @@ export async function createRmOrder(userId, packId, { device = null } = {}) {
       type: checkoutType(device),
       layoutVersion: 'v4',
       method: [...config.rm.webMethods],
-      redirectUrl: redirectUrl(orderId),
+      redirectUrl: redirectUrl(orderId, from),
       notifyUrl: notifyUrl(),
       order: {
         id: orderId,
@@ -128,7 +134,9 @@ export async function createRmOrder(userId, packId, { device = null } = {}) {
     status: 'pending', provider_checkout_id: String(checkout.checkoutId ?? '').slice(0, 128) || null,
   });
   await logEvent({
-    orderId, source: 'api', event: 'checkout', outcome: 'pending', payload: { packId: pack.id, myrSen: pack.myrSen, type: checkoutType(device) },
+    orderId, source: 'api', event: 'checkout', outcome: 'pending', payload: {
+      packId: pack.id, myrSen: pack.myrSen, type: checkoutType(device), from, live: config.rm.live,
+    },
   });
   return {
     status: 'created', orderId, url: checkout.url, coins: pack.coins, myrSen: pack.myrSen,
@@ -258,9 +266,9 @@ export async function handleRmWebhook({ rawBody, headers }) {
   return { http: 200, body: { ok: true } };
 }
 
-/* ---------- the top-up page's view of an order ---------- */
+/* ---------- the player's view of an order ---------- */
 
-/** One of this player's coin orders, for the top-up page's done screen. Read-only: it never asks RM. */
+/** One of this player's coin orders, for the store's waiting sheet or the top-up page's done screen. Read-only: it never asks RM. */
 export async function orderForUser(userId, orderId) {
   if (typeof orderId !== 'string' || orderId.length > 24) return null;
   const order = await getDb()('payment_orders').where({ id: orderId, user_id: userId }).first();

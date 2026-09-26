@@ -8,7 +8,7 @@
 
 const fmt = (n) => Number(n ?? 0).toLocaleString('en');
 
-const VIA = { stars: 'Telegram Stars' };
+const VIA = { stars: 'Telegram Stars', card: 'TNG or card' };
 
 /** One history entry as a line a player understands. */
 export function historyLabel(entry) {

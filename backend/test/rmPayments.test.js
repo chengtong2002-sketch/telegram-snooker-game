@@ -697,11 +697,31 @@ test('the flag is off unless set, and on without its keys the backend refuses to
   assert.equal(problems.length, 5, problems.join('\n'));
 });
 
-test('no production RM host appears anywhere in the backend source', () => {
+test("RM's live hosts are named only in client.js, and only live === true reaches them", async () => {
   const src = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src');
   const files = fs.readdirSync(src, { recursive: true }).filter((f) => f.endsWith('.js'));
   for (const f of files) {
-    const text = fs.readFileSync(path.join(src, f), 'utf8');
-    assert.doesNotMatch(text, /(?<!sb-)(oauth|open)\.revenuemonster\.my/, f);
+    if (path.basename(f) === 'client.js') continue;
+    assert.doesNotMatch(fs.readFileSync(path.join(src, f), 'utf8'), /revenuemonster\.my/, f);
+  }
+  const hostsFor = async (live) => {
+    const hosts = [];
+    const client = createRmClient({
+      clientId: 'id',
+      clientSecret: 'secret',
+      privateKey: ours.private,
+      live,
+      fetch: async (url) => {
+        hosts.push(new URL(url).host);
+        const body = url.endsWith('/token') ? { accessToken: 't', expiresIn: 3600 } : { item: { url: 'https://x' }, code: 'SUCCESS' };
+        return new Response(JSON.stringify(body), { status: 200 });
+      },
+    });
+    await client.createCheckout({ order: { id: 'x' } });
+    return hosts;
+  };
+  assert.deepEqual(await hostsFor(true), ['oauth.revenuemonster.my', 'open.revenuemonster.my']);
+  for (const notLive of [false, undefined, 'true', 'production', 1]) {
+    assert.deepEqual(await hostsFor(notLive), ['sb-oauth.revenuemonster.my', 'sb-open.revenuemonster.my'], String(notLive));
   }
 });

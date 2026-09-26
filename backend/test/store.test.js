@@ -70,8 +70,8 @@ test('a new player: 0 coins, owns and wears only the defaults, sees the packs', 
     assert.equal(item.equipped, item.id === 'club-ash' || item.id === 'club-white', item.id);
     assert.ok(['cue', 'ball'].includes(item.kind));
   }
-  // Stars prices only: the Mini App never shows or links another way to pay (docs/topup-web-plan.md).
-  assert.deepEqual(body.packs, DEFAULT_PACKS.map(({ id, coins, stars }) => ({ id, coins, stars })));
+  // Stars and MYR prices, both from config (MYR in the Mini App since Sep 26).
+  assert.deepEqual(body.packs, DEFAULT_PACKS.map(({ id, coins, stars, myrSen }) => ({ id, coins, stars, myrSen })));
 });
 
 /* ---------- buying ---------- */
