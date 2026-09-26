@@ -3,11 +3,10 @@ import { migrate, closeDb } from '@snooker/db';
 import { config, assertConfig } from './config.js';
 import { registerCommands, COMMAND_LIST } from './commands/index.js';
 import { startNotificationServer } from './notifications.js';
-import { registerPayments } from './payments.js';
 
 assertConfig();
 
-// TELEGRAM_TEST_ENV: a bot made on Telegram's test server, where Stars cost nothing.
+// TELEGRAM_TEST_ENV: a bot made on Telegram's test server.
 const bot = new Bot(config.botToken, config.telegramTestEnv ? { client: { environment: 'test' } } : undefined);
 
 // One line per incoming update (kind only, no message content), so "the bot is
@@ -20,7 +19,6 @@ bot.use((ctx, next) => {
 });
 
 registerCommands(bot);
-registerPayments(bot);
 
 bot.catch((err) => {
   const e = err.error;

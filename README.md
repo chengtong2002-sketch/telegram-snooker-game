@@ -356,7 +356,7 @@ top-up page (docs/topup-web-plan.md): "not available yet" while RM is off, login
 the order (pack + device only), the done screen following the order, and 320 /
 390 / desktop. The backend side is `backend/test/topup.test.js` and
 `backend/test/rmPayments.test.js`. `smoke:rm` does the same for the Mini App's
-store: ringgit buttons beside Stars, the checkout opened outside the webview (TNG app
+store: ringgit only (no Stars since Sep 26), the checkout opened outside the webview (TNG app
 on a phone, QR on Telegram Desktop), the waiting sheet, and the trip back
 (`startapp=store_<orderId>`).
 `smoke:aim` pairs two fresh dev players through the API and checks that the

@@ -3,7 +3,6 @@ import { config, assertProductionConfig, assertPaymentsConfig } from './config.j
 import { logger } from './logger.js';
 import { buildApp } from './app.js';
 import { sweepShotClocks } from './services/matchService.js';
-import { reconcileStars } from './services/stars.js';
 import { reconcileRm } from './services/rm/payments.js';
 import { aimRelay } from './services/aimRelay.js';
 
@@ -43,14 +42,6 @@ const challengeReaper = setInterval(() => {
 }, 10 * 60_000);
 challengeReaper.unref();
 
-// A Stars payment the bot never passed on (bot or backend down at the time) is
-// still in Telegram's transaction list: credit it from there. Does nothing
-// while Stars are switched off.
-const starsReconciler = setInterval(() => {
-  reconcileStars().catch((err) => logger.error({ err: err.message }, 'stars reconcile failed'));
-}, 5 * 60_000);
-starsReconciler.unref();
-
 // Revenue Monster only calls back on success: failures, expiry and refunds
 // are found by asking. Does nothing while RM is switched off.
 const rmReconciler = setInterval(() => {
@@ -62,7 +53,6 @@ async function shutdown(signal) {
   logger.info({ signal }, 'shutting down');
   clearInterval(sweeper);
   clearInterval(challengeReaper);
-  clearInterval(starsReconciler);
   clearInterval(rmReconciler);
   // Open aim streams would otherwise hold server.close() until the forced exit.
   aimRelay.closeAll();

@@ -1,7 +1,7 @@
 /**
  * Coins: the only code that writes coin_ledger or user_items.
  *
- * Coins buy cosmetics and nothing else. They are bought (Stars, later Revenue
+ * Coins buy cosmetics and nothing else. They are bought (ringgit, via Revenue
  * Monster) or granted by the owner — never earned from matches — and nothing in
  * rewards.js or matchService.js reads them, so they can never touch PvP entry,
  * reward eligibility or the token budget (test/coins.test.js checks this).

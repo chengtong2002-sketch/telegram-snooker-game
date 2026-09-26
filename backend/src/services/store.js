@@ -10,13 +10,12 @@ import { items, itemById } from '@snooker/cosmetics';
 import { config } from '../config.js';
 import { balanceOf, ownedItemIds } from './coins.js';
 import { equippedIds, EQUIPPED_COLUMN } from './equipped.js';
-import { starsEnabledFor } from './stars.js';
 
 export const KINDS = Object.freeze(['cue', 'ball']);
 
-/** Packs as the Mini App sees them: ids, coins and prices (Stars, and MYR in sen). */
+/** Packs as the Mini App sees them: ids, coins and the MYR price in sen. */
 export const packsOnSale = () => config.store.packs.map((p) => ({
-  id: p.id, coins: p.coins, stars: p.stars, myrSen: p.myrSen,
+  id: p.id, coins: p.coins, myrSen: p.myrSen,
 }));
 
 export async function storeView(userId) {
@@ -41,7 +40,6 @@ export async function storeView(userId) {
       equipped: equipped[item.kind] === item.id,
     })),
     packs: packsOnSale(),
-    starsEnabled: starsEnabledFor(user),
     rmEnabled: config.rm.enabled,
   };
 }

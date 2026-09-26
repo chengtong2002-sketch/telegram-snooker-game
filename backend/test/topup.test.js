@@ -193,7 +193,7 @@ test('a top-up token opens nothing the Mini App uses', async () => {
     ['GET', '/api/auth/me'], ['GET', '/api/store'], ['POST', '/api/store/buy'], ['POST', '/api/store/equip'],
     ['GET', '/api/stats'], ['GET', '/api/match/active'], ['POST', '/api/match/queue'],
     ['GET', '/api/wallet'], ['POST', '/api/wallet/link'], ['GET', '/api/rewards/claimable'], ['POST', '/api/rewards/redeem'],
-    ['POST', '/api/payments/stars/invoice'], ['GET', '/api/sync/pending'],
+    ['POST', '/api/payments/rm/orders'], ['GET', '/api/sync/pending'],
   ];
   for (const [method, path] of routes) {
     const res = await call(path, { method, token: p.token, body: method === 'POST' ? {} : undefined });
@@ -272,14 +272,19 @@ test('an unknown pack is 404, and nobody sees another player\'s order', async ()
 
 const appOrder = (p, body) => call('/api/payments/rm/orders', { method: 'POST', token: p.appToken, body });
 
-test("the Mini App's store lists MYR prices and says RM is on", async () => {
+test("the Mini App's store lists MYR prices only and says RM is on", async () => {
   const p = await appPlayer();
   const store = await call('/api/store', { token: p.appToken });
   assert.equal(store.status, 200);
   assert.equal(store.body.rmEnabled, true);
-  assert.deepEqual(store.body.packs.map((pack) => [pack.id, pack.myrSen, pack.stars]), [
-    ['coins-100', 490, 100], ['coins-550', 1990, 400], ['coins-1200', 3990, 800],
+  assert.deepEqual(store.body.packs, [
+    { id: 'coins-100', coins: 100, myrSen: 490 },
+    { id: 'coins-550', coins: 550, myrSen: 1990 },
+    { id: 'coins-1200', coins: 1200, myrSen: 3990 },
   ]);
+  // Stars are gone (Sep 26): no Stars field, and no invoice route.
+  assert.equal('starsEnabled' in store.body, false);
+  assert.equal((await call('/api/payments/stars/invoice', { method: 'POST', token: p.appToken, body: { packId: 'coins-100' } })).status, 404);
 });
 
 test('a Mini App checkout: phone → TNG app, computer → QR; back into the store; price and coins from config', async () => {

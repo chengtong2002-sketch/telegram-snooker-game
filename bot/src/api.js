@@ -33,8 +33,3 @@ export const joinQueue = (from) => call('/internal/queue/join', { telegramUser: 
 export const leaveQueue = (from) => call('/internal/queue/leave', { telegramUser: telegramUser(from) });
 export const status = (from) => call('/internal/status', { telegramUser: telegramUser(from) });
 
-/* Stars payments: the bot relays, the backend decides (backend/src/services/stars.js). */
-// Telegram gives a pre-checkout 10 s in all: leave room to answer after a slow backend.
-export const starsCheck = (body) => call('/internal/payments/stars/check', body, { timeoutMs: 5000 });
-export const starsPaid = (body) => call('/internal/payments/stars/paid', body);
-export const starsRefunded = (body) => call('/internal/payments/stars/refunded', body);

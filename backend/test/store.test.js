@@ -70,8 +70,9 @@ test('a new player: 0 coins, owns and wears only the defaults, sees the packs', 
     assert.equal(item.equipped, item.id === 'club-ash' || item.id === 'club-white', item.id);
     assert.ok(['cue', 'ball'].includes(item.kind));
   }
-  // Stars and MYR prices, both from config (MYR in the Mini App since Sep 26).
-  assert.deepEqual(body.packs, DEFAULT_PACKS.map(({ id, coins, stars, myrSen }) => ({ id, coins, stars, myrSen })));
+  // MYR prices from config; no Stars (removed Sep 26).
+  assert.deepEqual(body.packs, DEFAULT_PACKS.map(({ id, coins, myrSen }) => ({ id, coins, myrSen })));
+  assert.equal('starsEnabled' in body, false);
 });
 
 /* ---------- buying ---------- */
@@ -222,15 +223,17 @@ test('a match payload carries each seat\'s skins, and a stale id falls back to t
 test('pack config: empty means the defaults; anything malformed stops the server', () => {
   assert.equal(parsePacks(undefined), DEFAULT_PACKS);
   assert.equal(parsePacks('  '), DEFAULT_PACKS);
-  assert.deepEqual(DEFAULT_PACKS.map((p) => [p.coins, p.stars, p.myrSen]), [[100, 100, 490], [550, 400, 1990], [1200, 800, 3990]]);
+  assert.deepEqual(DEFAULT_PACKS.map((p) => [p.coins, p.myrSen]), [[100, 490], [550, 1990], [1200, 3990]]);
 
-  const custom = parsePacks('[{"id":"coins-50","coins":50,"stars":40}]');
-  assert.deepEqual(custom, [{ id: 'coins-50', coins: 50, stars: 40, myrSen: null }]);
+  const custom = parsePacks('[{"id":"coins-50","coins":50,"myrSen":100}]');
+  assert.deepEqual(custom, [{ id: 'coins-50', coins: 50, myrSen: 100 }]);
+  // A Stars price left in COIN_PACKS from before Sep 26 is ignored, not an error.
+  assert.deepEqual(parsePacks('[{"id":"coins-50","coins":50,"stars":40,"myrSen":100}]'), custom);
 
   for (const bad of [
     'nope', '{}', '[]',
-    '[{"id":"a","coins":0,"stars":1}]',
-    '[{"id":"a","coins":10,"stars":1.5}]',
+    '[{"id":"a","coins":0,"myrSen":1}]',
+    '[{"id":"a","coins":10,"myrSen":1.5}]',
     '[{"id":"a","coins":10,"myrSen":"4.90"}]',
     '[{"id":"A B","coins":10}]',
     '[{"id":"a","coins":10},{"id":"a","coins":20}]',

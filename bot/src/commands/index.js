@@ -111,7 +111,7 @@ export function registerCommands(bot) {
   bot.command('wallet', handleWallet);
   bot.command('leaderboard', handleLeaderboard);
   bot.command('status', handleStatus);
-  // Telegram requires both of a bot that sells for Stars.
+  // Support and terms for coin purchases (ringgit, through Revenue Monster).
   bot.command('paysupport', (ctx) => {
     const { text, parse_mode } = paySupportMessage({ supportHandle: config.supportHandle });
     return ctx.reply(text, { parse_mode });

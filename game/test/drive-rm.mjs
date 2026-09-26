@@ -29,9 +29,9 @@ const USER = {
   id: 7, telegramId: '999000070', username: 'dev70', firstName: 'Dev 70', equipped: { cue: 'club-ash', ball: 'club-white' },
 };
 const PACKS = [
-  { id: 'coins-100', coins: 100, stars: 100, myrSen: 490 },
-  { id: 'coins-550', coins: 550, stars: 400, myrSen: 1990 },
-  { id: 'coins-1200', coins: 1200, stars: 800, myrSen: 3990 },
+  { id: 'coins-100', coins: 100, myrSen: 490 },
+  { id: 'coins-550', coins: 550, myrSen: 1990 },
+  { id: 'coins-1200', coins: 1200, myrSen: 3990 },
 ];
 const ORDER_ID = 'rm0123456789abcdef012345';
 const CHECKOUT = `https://sb-pg.revenuemonster.my/checkout?id=${ORDER_ID}`;
@@ -58,7 +58,6 @@ function stubApi(page, state) {
         equipped: USER.equipped,
         items: [],
         packs: PACKS,
-        starsEnabled: state.starsEnabled,
         rmEnabled: state.rmEnabled,
       });
     }
@@ -106,7 +105,7 @@ async function layoutProblems(page, scope) {
 }
 
 const newState = (over = {}) => ({
-  calls: [], orderBodies: [], balance: 0, starsEnabled: false, rmEnabled: true, orderStatuses: ['pending'], ...over,
+  calls: [], orderBodies: [], balance: 0, rmEnabled: true, orderStatuses: ['pending'], ...over,
 });
 
 const browser = await chromium.launch({ channel: 'chrome' });
@@ -131,7 +130,7 @@ try {
 
   const labels = await page.locator('#store .item-pack button').allInnerTexts();
   check(JSON.stringify(labels) === JSON.stringify(['RM 4.90', 'RM 19.90', 'RM 39.90']),
-    `packs are priced in ringgit, and the Stars buttons that can't be used here are left out: ${labels.join(', ')}`);
+    `packs are priced in ringgit only, one button each: ${labels.join(', ')}`);
   check((await page.locator('#store-note').innerText()).includes("Touch 'n Go"), 'the note says how it is paid');
   const layout = await layoutProblems(page, '#store');
   check(layout.length === 0, `store 360: ${layout.join('; ') || 'fits'}`);
@@ -210,12 +209,12 @@ try {
   await page5.screenshot({ path: shot('waiting-desktop') });
   await pc.close();
 
-  /* ---------- in Telegram (Android) with Stars on too: two prices per pack, 320 wide ---------- */
+  /* ---------- in Telegram (Android), 320 wide ---------- */
   const both = await browser.newContext({ viewport: { width: 320, height: 640 }, isMobile: true, hasTouch: true });
   const page4 = await both.newPage();
   page4.on('pageerror', (err) => check(false, `page error: ${err.message}`));
   await fakeTelegram(page4, 'android');
-  const state4 = newState({ starsEnabled: true });
+  const state4 = newState();
   await stubApi(page4, state4);
   await page4.goto(`${GAME}/`);
   await page4.locator('#lobby').waitFor({ state: 'visible' });
@@ -223,16 +222,16 @@ try {
   await page4.locator('#store .store-tab[data-tab="coins"]').click();
   await page4.locator('#store .item-pack').first().waitFor();
   const bothLabels = await page4.locator('#store .item-pack button').allInnerTexts();
-  check(bothLabels.length === 6 && bothLabels.includes('RM 39.90') && bothLabels.includes('⭐ 800'), `both prices on every pack: ${bothLabels.join(', ')}`);
+  check(JSON.stringify(bothLabels) === JSON.stringify(['RM 4.90', 'RM 19.90', 'RM 39.90']), `no Stars anywhere, ringgit only: ${bothLabels.join(', ')}`);
   const tight = await layoutProblems(page4, '#store');
-  check(tight.length === 0, `store 320 with two prices: ${tight.join('; ') || 'fits'}`);
-  await page4.screenshot({ path: shot('both-320') });
+  check(tight.length === 0, `store 320: ${tight.join('; ') || 'fits'}`);
+  await page4.screenshot({ path: shot('android-320') });
   await page4.locator('#store .item-pack button', { hasText: 'RM 39.90' }).click();
   await page4.locator('#overlay-title', { hasText: 'Waiting for your payment' }).waitFor();
   check(JSON.stringify(state4.orderBodies) === JSON.stringify([{ packId: 'coins-1200', device: 'mobile' }]), `Telegram on Android asks for the TNG app (${JSON.stringify(state4.orderBodies)})`);
   await both.close();
 
-  /* ---------- switched off: no ringgit anywhere ---------- */
+  /* ---------- switched off: every pack says Soon, nothing can be bought ---------- */
   const off = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const page3 = await off.newPage();
   const state3 = newState({ rmEnabled: false });
@@ -243,7 +242,9 @@ try {
   await page3.locator('#store .store-tab[data-tab="coins"]').click();
   await page3.locator('#store .item-pack').first().waitFor();
   const offLabels = await page3.locator('#store .item-pack button').allInnerTexts();
-  check(offLabels.every((l) => !l.startsWith('RM')), `RM off: no ringgit prices (${offLabels.join(', ')})`);
+  const offDisabled = await page3.locator('#store .item-pack button').evaluateAll((els) => els.every((el) => el.disabled));
+  check(offLabels.length === 3 && offLabels.every((l) => l === 'Soon') && offDisabled, `RM off: every pack is Soon and disabled (${offLabels.join(', ')})`);
+  check((await page3.locator('#store-note').innerText()).includes('coming soon'), 'RM off: the note says buying is coming soon');
   await off.close();
 } finally {
   await browser.close();

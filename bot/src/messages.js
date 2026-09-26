@@ -226,36 +226,25 @@ export function matchOverMessage(event) {
   return message(lines);
 }
 
-/* ---------- Stars payments ---------- */
-
-/** After a successful Stars payment has been credited. */
-export function coinsAddedMessage({ coins, balance }) {
-  return message([
-    html`✅ <b>${Number(coins).toLocaleString('en')} coins added.</b>`,
-    html`Your balance is ${Number(balance).toLocaleString('en')} coins. Open the store to spend them on cues and cue balls.`,
-  ]);
-}
+/* ---------- coin purchases ---------- */
 
 /**
- * The backend's `coins-added` event: a payment made outside Telegram (the web
- * top-up page) has been credited. Deliberately bare, by the user's rule: no
- * payment method, no mention of the web, no link and no button. Telegram
- * requires Stars for digital goods inside the bot, so nothing here may point a
- * player at another way to pay.
+ * The backend's `coins-added` event: a ringgit payment (Revenue Monster, from
+ * the store or the web top-up page) has been credited. Deliberately bare, by
+ * the user's rule (Sep 25): no payment method, no link and no button.
  */
 export function balanceUpdatedMessage({ coins }) {
   return message([html`Your balance was updated: +${Number(coins).toLocaleString('en')} coins`]);
 }
 
-/** /paysupport: Telegram requires it of every bot that takes Stars. */
+/** /paysupport: help with a coin purchase. */
 export function paySupportMessage({ supportHandle = '' } = {}) {
   return message([
     '<b>Payment support</b>',
     supportHandle
-      ? html`For anything about a coin purchase, message ${supportHandle} with the date and the amount of Stars.`
-      : 'For anything about a coin purchase, reply here with the date and the amount of Stars, and we will get back to you.',
+      ? html`For anything about a coin purchase, message ${supportHandle} with the date and the amount paid.`
+      : 'For anything about a coin purchase, reply here with the date and the amount paid, and we will get back to you.',
     'Coins you paid for and did not receive are always added or refunded.',
-    'Telegram support cannot help with purchases made in this bot.',
   ]);
 }
 
@@ -263,7 +252,7 @@ export function paySupportMessage({ supportHandle = '' } = {}) {
 export function termsMessage() {
   return message([
     '<b>Terms for coin purchases</b>',
-    'Coins are bought with Telegram Stars and spent in the store on cues and cue balls. That is all they do.',
+    "Coins are bought in ringgit (Touch 'n Go, through Revenue Monster) and spent in the store on cues and cue balls. That is all they do.",
     'Coins never affect a match, never enter a player into anything and never count toward token rewards.',
     'Coins cannot be sold, transferred or exchanged for money or tokens.',
     'Items bought with coins are yours for good. Purchases are final, except where a refund is required.',

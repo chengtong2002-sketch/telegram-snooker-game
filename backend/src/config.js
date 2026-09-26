@@ -78,14 +78,6 @@ export const config = {
 
   store: {
     packs: parsePacks(process.env.COIN_PACKS),
-    // Off by default: on the production bot a Star is real money. Prove it on
-    // Telegram's test environment first (TELEGRAM_TEST_ENV + a test-server bot).
-    starsEnabled: bool(process.env.PAYMENTS_STARS_ENABLED, false),
-    // With Stars off for everyone, these Telegram user ids may still buy with
-    // them (comma-separated): real-money testing on the production bot by the
-    // owner. Ignored when PAYMENTS_STARS_ENABLED is on (everyone can then).
-    starsAllowTelegramIds: new Set((process.env.PAYMENTS_STARS_ALLOW_TELEGRAM_IDS ?? '')
-      .split(',').map((s) => s.trim()).filter((s) => /^\d+$/.test(s))),
   },
 
   // Revenue Monster (MYR). Sandbox unless RM_ENV is exactly "production": then
@@ -107,13 +99,6 @@ export const config = {
     returnAppUrl: (process.env.RM_RETURN_APP_URL ?? 'https://t.me/snookerPlayBot').trim().replace(/\/+$/, ''),
     // RM method codes offered at checkout (web page and Mini App), comma-separated. TNG only for now.
     webMethods: (process.env.RM_WEB_METHODS ?? 'TNG_MY').split(',').map((s) => s.trim()).filter(Boolean),
-  },
-
-  telegram: {
-    // Only tests point this elsewhere (a local stub of the Bot API).
-    apiRoot: (process.env.TELEGRAM_API_ROOT ?? 'https://api.telegram.org').replace(/\/+$/, ''),
-    // Telegram's test environment: same host, /bot<token>/test/<method>.
-    testEnv: bool(process.env.TELEGRAM_TEST_ENV, false),
   },
 
   // Cue ball spin in PvP (practice always has it; it never reaches the server).
