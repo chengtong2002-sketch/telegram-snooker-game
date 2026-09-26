@@ -277,8 +277,14 @@ function packRow(pack) {
     pay.setAttribute('aria-label', `Buy ${fmt(pack.coins)} coins for ${myr(pack.myrSen)}`);
     pay.onclick = () => buyPackRm(pack);
   } else {
-    pay.disabled = true;
+    // Looks off, but still answers a tap: a button that does nothing reads as broken.
+    pay.classList.add('is-off');
+    pay.setAttribute('aria-disabled', 'true');
     pay.title = 'Ringgit payments open soon';
+    pay.onclick = () => {
+      haptic('warning');
+      session?.hud.toast('Buying coins opens soon. Ringgit payments are not switched on yet.', '', 3500);
+    };
   }
   action.append(pay);
   li.append(amount, action);

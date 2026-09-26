@@ -242,9 +242,13 @@ try {
   await page3.locator('#store .store-tab[data-tab="coins"]').click();
   await page3.locator('#store .item-pack').first().waitFor();
   const offLabels = await page3.locator('#store .item-pack button').allInnerTexts();
-  const offDisabled = await page3.locator('#store .item-pack button').evaluateAll((els) => els.every((el) => el.disabled));
+  const offDisabled = await page3.locator('#store .item-pack button').evaluateAll((els) => els.every((el) => el.getAttribute('aria-disabled') === 'true'));
   check(JSON.stringify(offLabels) === JSON.stringify(['RM 4.90', 'RM 19.90', 'RM 39.90']) && offDisabled, `RM off: ringgit prices shown but disabled (${offLabels.join(', ')})`);
   check((await page3.locator('#store-note').innerText()).includes('open soon'), 'RM off: the note says payments open soon');
+  // force: Playwright treats aria-disabled as untappable; a real browser still delivers the tap.
+  await page3.locator('#store .item-pack button', { hasText: 'RM 4.90' }).click({ force: true });
+  await page3.locator('#toast', { hasText: 'opens soon' }).waitFor({ timeout: 3000 });
+  check(state3.orderBodies.length === 0, 'RM off: a tap explains itself and starts no order');
   await page3.screenshot({ path: shot('off-390') });
   await off.close();
 } finally {

@@ -780,7 +780,7 @@ html, body {
 .item-btn:active { background: rgba(255,255,255,.09); }
 .item-btn.buy { border-color: rgba(212,173,82,.62); color: #f3dfa6; background: rgba(212,173,82,.06); }
 .item-btn.buy:active { background: rgba(212,173,82,.16); }
-.item-btn:disabled { opacity: .5; cursor: default; }
+.item-btn:disabled, .item-btn.is-off { opacity: .5; cursor: default; }
 .item-state {
   min-width: 84px; text-align: center;
   font-size: 12px; font-weight: 800; letter-spacing: .3px;
