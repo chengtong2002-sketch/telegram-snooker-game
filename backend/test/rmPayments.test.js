@@ -725,3 +725,25 @@ test("RM's live hosts are named only in client.js, and only live === true reache
     assert.deepEqual(await hostsFor(notLive), ['sb-oauth.revenuemonster.my', 'sb-open.revenuemonster.my'], String(notLive));
   }
 });
+
+test('RM answering with a checkoutId only (as live RM does): the url is built on the right host', async () => {
+  const checkoutFor = async (live, checkoutId) => {
+    const client = createRmClient({
+      clientId: 'id',
+      clientSecret: 'secret',
+      privateKey: ours.private,
+      live,
+      fetch: async (url) => {
+        const body = url.endsWith('/token') ? { accessToken: 't', expiresIn: 3600 } : { item: { checkoutId }, code: 'SUCCESS' };
+        return new Response(JSON.stringify(body), { status: 200 });
+      },
+    });
+    return client.createCheckout({ order: { id: 'x' } });
+  };
+  assert.equal((await checkoutFor(true, '1790443990123456789')).url, 'https://pg.revenuemonster.my/v4/checkout?checkoutId=1790443990123456789');
+  assert.equal((await checkoutFor(false, '1790443990123456789')).url, 'https://sb-pg.revenuemonster.my/v4/checkout?checkoutId=1790443990123456789');
+  // Anything that is not a plain id is not trusted into a url (the order then fails as NO_URL).
+  for (const odd of ['a/b', 'x?y=1', '', 'https://evil.example']) {
+    assert.equal((await checkoutFor(true, odd)).url, undefined, odd);
+  }
+});

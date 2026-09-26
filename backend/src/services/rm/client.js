@@ -18,8 +18,12 @@
 import { createSign, createVerify, randomBytes } from 'node:crypto';
 
 export const RM_HOSTS = Object.freeze({
-  sandbox: Object.freeze({ oauth: 'https://sb-oauth.revenuemonster.my/v1', open: 'https://sb-open.revenuemonster.my/v3' }),
-  production: Object.freeze({ oauth: 'https://oauth.revenuemonster.my/v1', open: 'https://open.revenuemonster.my/v3' }),
+  sandbox: Object.freeze({
+    oauth: 'https://sb-oauth.revenuemonster.my/v1', open: 'https://sb-open.revenuemonster.my/v3', pg: 'https://sb-pg.revenuemonster.my',
+  }),
+  production: Object.freeze({
+    oauth: 'https://oauth.revenuemonster.my/v1', open: 'https://open.revenuemonster.my/v3', pg: 'https://pg.revenuemonster.my',
+  }),
 });
 export const RM_OAUTH_URL = RM_HOSTS.sandbox.oauth;
 export const RM_OPEN_URL = RM_HOSTS.sandbox.open;
@@ -184,8 +188,18 @@ export function createRmClient({
 
   return {
     token,
-    /** Hosted checkout → { checkoutId, url }. */
-    createCheckout: (payload) => call('checkout', 'post', '/payment/online', payload),
+    /**
+     * Hosted checkout → { checkoutId, url }. RM's live API answers with the
+     * checkoutId alone (seen Sep 27, 2026; the docs show a url too), so the url
+     * is built the way RM's docs give it: <pg host>/v4/checkout?checkoutId=<id>.
+     */
+    async createCheckout(payload) {
+      const item = await call('checkout', 'post', '/payment/online', payload);
+      if (item && !item.url && typeof item.checkoutId === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(item.checkoutId)) {
+        return { ...item, url: `${hosts.pg}/v4/checkout?checkoutId=${encodeURIComponent(item.checkoutId)}` };
+      }
+      return item;
+    },
     /**
      * The transaction for our order id, or null when RM has none (nobody has
      * paid yet, or the checkout was never opened).
