@@ -7,14 +7,15 @@
  * Sep 26; a "stars" key in COIN_PACKS is ignored.)
  *
  * COIN_PACKS overrides the defaults with a JSON array of the same shape:
- *   [{"id":"coins-100","coins":100,"myrSen":490}, ...]
- * myrSen is in sen (RM 4.90 = 490), so no price is ever a float.
+ *   [{"id":"coins-100","coins":100,"myrSen":1990}, ...]
+ * myrSen is in sen (RM 19.90 = 1990), so no price is ever a float.
  */
 
 export const DEFAULT_PACKS = Object.freeze([
-  Object.freeze({ id: 'coins-100', coins: 100, myrSen: 490 }),
-  Object.freeze({ id: 'coins-550', coins: 550, myrSen: 1990 }),
-  Object.freeze({ id: 'coins-1200', coins: 1200, myrSen: 3990 }),
+  // The user's prices (Sep 27): RM 19.90 / RM 39.90 / RM 59.90.
+  Object.freeze({ id: 'coins-100', coins: 100, myrSen: 1990 }),
+  Object.freeze({ id: 'coins-550', coins: 550, myrSen: 3990 }),
+  Object.freeze({ id: 'coins-1200', coins: 1200, myrSen: 5990 }),
 ]);
 
 const positiveInt = (v) => Number.isSafeInteger(v) && v > 0;

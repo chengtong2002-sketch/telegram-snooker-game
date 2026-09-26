@@ -23,6 +23,12 @@ process.env.NODE_ENV = 'test';
 process.env.ALLOW_DEV_AUTH = 'true';
 process.env.BOT_NOTIFY_URL = 'http://127.0.0.1:1/internal/notify';
 process.env.PAYMENTS_RM_ENABLED = 'true';
+// This file's own pack prices, so its amounts do not follow the live defaults.
+process.env.COIN_PACKS = JSON.stringify([
+  { id: 'coins-100', coins: 100, myrSen: 490 },
+  { id: 'coins-550', coins: 550, myrSen: 1990 },
+  { id: 'coins-1200', coins: 1200, myrSen: 3990 },
+]);
 process.env.RM_CLIENT_ID = 'client-id';
 process.env.RM_CLIENT_SECRET = 'client-secret';
 process.env.RM_STORE_ID = '1234567890';

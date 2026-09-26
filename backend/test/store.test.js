@@ -223,7 +223,7 @@ test('a match payload carries each seat\'s skins, and a stale id falls back to t
 test('pack config: empty means the defaults; anything malformed stops the server', () => {
   assert.equal(parsePacks(undefined), DEFAULT_PACKS);
   assert.equal(parsePacks('  '), DEFAULT_PACKS);
-  assert.deepEqual(DEFAULT_PACKS.map((p) => [p.coins, p.myrSen]), [[100, 490], [550, 1990], [1200, 3990]]);
+  assert.deepEqual(DEFAULT_PACKS.map((p) => [p.coins, p.myrSen]), [[100, 1990], [550, 3990], [1200, 5990]]);
 
   const custom = parsePacks('[{"id":"coins-50","coins":50,"myrSen":100}]');
   assert.deepEqual(custom, [{ id: 'coins-50', coins: 50, myrSen: 100 }]);

@@ -21,7 +21,7 @@ the store slice (buy/equip) then builds on.
 |---|---|---|
 | 1 | SDK or REST? | **REST** with `node:crypto` + `fetch` (decided by the user). `rm-api-sdk` 1.0.13 pins `axios ^0.18.0` (known CVEs) and has no webhook verification. |
 | 2 | A refund after the coins are spent | **Ledger debit anyway; the balance may go negative, and purchases are blocked until it is positive again** (decided by the user). Items already bought stay owned. |
-| 3 | Coin packs | **Placeholders (decided by the user): 100 coins RM 4.90, 550 RM 19.90, 1,200 RM 39.90.** Stars prices TBD. Packs, coin amounts and both prices live in server config (env/JSON), never hardcoded and never sent by the client. A pack with no price for a provider is simply not offered through it. |
+| 3 | Coin packs | **Placeholders (decided by the user): 100 coins RM 4.90, 550 RM 19.90, 1,200 RM 39.90.** Changed Sep 27 to RM 19.90 / 39.90 / 59.90. Stars prices TBD. Packs, coin amounts and both prices live in server config (env/JSON), never hardcoded and never sent by the client. A pack with no price for a provider is simply not offered through it. |
 | 4 | Return from checkout | **Straight into the Mini App store** (decided by the user): `https://t.me/snookerPlayBot/play?startapp=store_<orderId>`. Needs a Mini App with short name `play` created in BotFather (`/newapp`). The game maps `start_param` `store_<orderId>` to the store screen showing that order. |
 | 5 | RM sandbox merchant account? | **Open.** Needed for phase 0: client id/secret, store id, our key pair uploaded, and RM's server public key. |
 
