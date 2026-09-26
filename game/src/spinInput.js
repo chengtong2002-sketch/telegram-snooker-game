@@ -1,6 +1,6 @@
 /**
- * Spin controls: where the cue tip meets the cue ball (spin phase 4, practice
- * only until the server takes spin in phase 2).
+ * Spin controls: where the cue tip meets the cue ball. Offered in practice, and
+ * in a PvP match the server allows it in (match.spinAllowed).
  *
  *   phone    tap the cue-ball button on the left; a large cue ball opens, and
  *            the dot goes wherever the finger is. Reset / Done.

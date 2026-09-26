@@ -112,6 +112,18 @@ export const config = {
     testEnv: bool(process.env.TELEGRAM_TEST_ENV, false),
   },
 
+  // Cue ball spin in PvP (practice always has it; it never reaches the server).
+  // Off by default once deployed, on in local dev. With it off, a match still
+  // gets spin when BOTH players are in the test list. Decided once, when the
+  // match is created, and kept in its state (spinAllowed). A match without it
+  // plays any spin sent as none rather than refusing the shot.
+  spin: {
+    // Empty counts as unset, so a blank line copied from .env.example keeps the default.
+    enabled: bool(process.env.SPIN_ENABLED || undefined, !isDeployed()),
+    testTelegramIds: new Set((process.env.SPIN_TEST_TELEGRAM_IDS ?? '')
+      .split(',').map((s) => s.trim()).filter((s) => /^\d+$/.test(s))),
+  },
+
   // Allows local dev without a real Telegram client.
   allowDevAuth: bool(process.env.ALLOW_DEV_AUTH, false),
 };
@@ -121,9 +133,12 @@ export const config = {
  * safety check off NODE_ENV alone failed open: forget that one variable (or
  * paste a local .env, which says development) and every check below was skipped.
  */
-export const isDeployed = (env = process.env) => env.NODE_ENV === 'production'
-  || ['RAILWAY_ENVIRONMENT', 'RAILWAY_ENVIRONMENT_NAME', 'RAILWAY_PROJECT_ID', 'RAILWAY_SERVICE_ID']
-    .some((name) => Boolean(env[name]));
+// A declaration, not a const: config above reads it before this line runs.
+export function isDeployed(env = process.env) {
+  return env.NODE_ENV === 'production'
+    || ['RAILWAY_ENVIRONMENT', 'RAILWAY_ENVIRONMENT_NAME', 'RAILWAY_PROJECT_ID', 'RAILWAY_SERVICE_ID']
+      .some((name) => Boolean(env[name]));
+}
 
 // Defaults and .env.example placeholders are public — as good as no secret.
 const weakSecret = (value, fallback, minLength) => !value || value === fallback

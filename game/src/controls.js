@@ -89,7 +89,7 @@ export class Controls {
     });
   }
 
-  /** Spin is offered in practice only until the server takes it (spin phase 2). */
+  /** Spin is offered in practice, and in a PvP match the server says allows it (spinAllowed). */
   setSpinAvailable(on) {
     this.spinInput.setAvailable(on);
   }

@@ -368,7 +368,10 @@ count twice, and a wallet proof can't be forged to redirect a payout.
 
 ## Known limits
 
-- **Physics is MVP-tuned, not simulation-grade.** No spin, no swerve, no throw.
+- **Physics is MVP-tuned, not simulation-grade.** Spin (follow, draw, side) is
+  in; there is no swerve, squirt or throw. Practice always offers spin; PvP only
+  with `SPIN_ENABLED` (default on locally, off once deployed) or when both
+  players are on `SPIN_TEST_TELEGRAM_IDS`, decided when the match is created.
   Matter.js has no continuous collision detection, so the timestep and maximum
   shot speed are chosen together to keep balls from tunnelling — see the comment
   block in `shared/sim/src/constants.js` before changing either.

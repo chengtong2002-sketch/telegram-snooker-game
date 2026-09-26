@@ -133,8 +133,11 @@ try {
     page.on('pageerror', (err) => check(false, `page error: ${err.message}`));
     await page.goto(`${GAME}/?mode=pvp&match=${matchId}&dev=${slots[0]}`);
     await page.waitForFunction(() => ['aiming', 'waiting'].includes(window.__snookerDebug?.phase));
-    // Spin is practice only until the server takes it (spin phase 2).
-    check(!(await page.locator('#spin-btn').isVisible()), 'PvP offers no spin');
+    // PvP offers spin exactly when the server allows it in this match
+    // (SPIN_ENABLED, or both players on SPIN_TEST_TELEGRAM_IDS).
+    const { spinAllowed } = (await api(`/match/${matchId}`, { token: a.token })).match;
+    check(await page.locator('#spin-btn').isVisible() === spinAllowed,
+      `PvP offers spin only when the match allows it (spinAllowed ${spinAllowed})`);
 
     await page.locator('#pause').click();
     const menu = await modal(page);

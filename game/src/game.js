@@ -69,6 +69,7 @@ export class Game {
     this.aiPose = null;           // practice: the AI's cue while it lines up
     this.shownPower = null;       // what the power meter shows, when it is not ours
 
+    // PvP turns it on once the match is loaded, if the server allows spin in it.
     controls.setSpinAvailable(mode === 'practice');
     hud.setConcede(false);
     hud.onConcede(() => this.confirmConcede('unrecoverable'));
@@ -105,6 +106,7 @@ export class Game {
   async #loadServerMatch() {
     const { match } = await api.getMatch(this.matchId);
     this.#adoptServerMatch(match);
+    this.controls.setSpinAvailable(this.spinAllowed);
     this.#setPlayerLabels(match.playerNames);
     // Both cue balls decoded now, so the first swap at a turn change is instant.
     this.skins?.preload(match.skins);
@@ -178,6 +180,11 @@ export class Game {
 
   get isMyTurn() {
     return this.frame.turn === this.myIndex;
+  }
+
+  /** Practice always; PvP only when the server allowed spin in this match. */
+  get spinAllowed() {
+    return this.mode === 'practice' || this.serverMatch?.spinAllowed === true;
   }
 
   // --- turn handling -------------------------------------------------------
@@ -275,8 +282,9 @@ export class Game {
     }
     const shot = { angle: aim.angle, power: aim.power };
     if (this.pendingCuePlacement) shot.cuePlacement = this.pendingCuePlacement;
-    // Practice only until the server takes spin (spin phase 2); Controls offers it only there.
-    if (this.mode === 'practice' && aim.spin) shot.spin = aim.spin;
+    // Controls offers spin only where it is allowed; this is the belt to that braces
+    // (the server would drop spin in a match without it, and play a different shot).
+    if (this.spinAllowed && aim.spin) shot.spin = aim.spin;
     DEBUG.lastShot = shot;
 
     this.phase = 'animating';

@@ -2,7 +2,7 @@ import { v4 as uuid } from 'uuid';
 import { getDb, toJson, fromJson, toBool } from '@snooker/db';
 import {
   newMatch, resolveShot, resolveTimeout, advanceMatch, matchHighBreak, concedeMatch,
-  cuePlacementProblem, MAX_BREAK,
+  cuePlacementProblem, MAX_BREAK, SPIN,
 } from '@snooker/sim';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
@@ -169,6 +169,8 @@ export function publicMatch(row, state) {
     shotClockSeconds: config.shotClockSeconds,
     // For the Quit dialog: how many missed shots before an absent player forfeits.
     idleForfeitTimeouts: IDLE_FORFEIT_TIMEOUTS,
+    // Whether this match's shots may carry spin (decided when it was created).
+    spinAllowed: state.spinAllowed === true,
     // The client counts down relative to this, not its own clock (see localDeadline in shared/sim).
     serverNow: Date.now(),
   };
@@ -179,10 +181,24 @@ export async function publicMatchForClient(row, state) {
   return { ...publicMatch(row, state), ...await seatInfo(state) };
 }
 
+/**
+ * Does a new match between these two get spin? Everyone does with SPIN_ENABLED
+ * on; with it off, only a pair who are BOTH on the test list. Asked once, at
+ * creation: changing the flag mid-match must not change how its shots play.
+ */
+async function spinAllowedFor(userIdA, userIdB) {
+  if (config.spin.enabled) return true;
+  const testers = config.spin.testTelegramIds;
+  if (testers.size === 0) return false;
+  const rows = await getDb()('users').whereIn('id', [userIdA, userIdB]).select('telegram_id');
+  return rows.length === 2 && rows.every((r) => testers.has(String(r.telegram_id)));
+}
+
 export async function createPvpMatch(userIdA, userIdB) {
   const knex = getDb();
   const id = uuid();
   const state = newMatch([Number(userIdA), Number(userIdB)]);
+  state.spinAllowed = await spinAllowedFor(userIdA, userIdB);
   await knex('matches').insert({
     id,
     mode: 'pvp',
@@ -318,15 +334,39 @@ async function startNextFrame(row, state) {
   return updatedRow;
 }
 
+const finite = (v) => typeof v === 'number' && Number.isFinite(v);
+
+/**
+ * The spin a shot plays with, from what the client sent: {spin} (null for
+ * none) or {problem}. In a match without spin, anything sent is dropped, never
+ * refused (decided Sep 24). The centre is no spin, so {0, 0} stores and
+ * dedupes exactly like a shot sent without any.
+ */
+function readSpin(raw, allowed) {
+  if (!allowed || raw === undefined || raw === null) return { spin: null };
+  if (typeof raw !== 'object' || !finite(raw.x) || !finite(raw.y)) return { problem: 'invalid spin' };
+  // Refuse, never clamp: the sim would clamp it, and play a shot the player never aimed.
+  if (Math.hypot(raw.x, raw.y) > SPIN.maxOffset) {
+    return { problem: `spin must be within ${SPIN.maxOffset} of the centre` };
+  }
+  if (raw.x === 0 && raw.y === 0) return { spin: null };
+  return { spin: { x: raw.x, y: raw.y } };
+}
+
 /**
  * Is `shot` for `matchId` the same one already stored under this resultId? The
  * stored shot is the cleaned one, which keeps a cue placement only when the
  * ball was in hand, so a placement is compared only when one was stored.
  */
-function sameShot(stored, matchId, shot) {
+function sameShot(stored, matchId, shot, spinAllowed) {
   const was = fromJson(stored.shot);
   if (String(stored.match_id) !== String(matchId)) return false;
   if (was.angle !== shot?.angle || was.power !== shot?.power) return false;
+  // Compared as it would have been stored: in a match without spin, spin sent
+  // is dropped, so it cannot make a replay differ.
+  const sent = readSpin(shot?.spin, spinAllowed);
+  if (sent.problem) return false;
+  if ((was.spin?.x ?? 0) !== (sent.spin?.x ?? 0) || (was.spin?.y ?? 0) !== (sent.spin?.y ?? 0)) return false;
   if (!was.cuePlacement) return true;
   return shot?.cuePlacement?.x === was.cuePlacement.x && shot?.cuePlacement?.y === was.cuePlacement.y;
 }
@@ -345,7 +385,7 @@ async function alreadyApplied(resultId, matchId, shot) {
     outcome: fromJson(dup.outcome),
     match: await publicMatchForClient(row, state),
   };
-  if (!sameShot(dup, matchId, shot)) {
+  if (!sameShot(dup, matchId, shot, state.spinAllowed === true)) {
     return {
       status: 'error',
       code: 409,
@@ -392,6 +432,9 @@ export async function applyShot({ matchId, userId, resultId, shot }) {
     return { status: 'error', code: 400, reason: 'invalid shot' };
   }
   const cleanShot = { angle, power };
+  const tip = readSpin(shot.spin, state.spinAllowed === true);
+  if (tip.problem) return { status: 'error', code: 400, reason: tip.problem };
+  if (tip.spin) cleanShot.spin = tip.spin;
   if (state.frame.inHand && shot.cuePlacement) {
     // Reject, never clamp: clamping only kept the ball on the table, so a
     // crafted request could take ball-in-hand from anywhere on it.
