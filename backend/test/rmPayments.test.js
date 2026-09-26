@@ -31,7 +31,7 @@ process.env.RM_PRIVATE_KEY = ours.private.replace(/\n/g, '\\n');
 process.env.RM_SERVER_PUBLIC_KEY = rmServer.public;
 process.env.PUBLIC_BACKEND_URL = 'https://backend.example/';
 process.env.RM_WEB_RETURN_URL = 'https://game.example/topup/done';
-delete process.env.RM_WEB_METHODS; // the default: TNG only
+delete process.env.RM_WEB_METHODS; // the default: TNG and card (MASTERCARD_MY)
 const BOT_TOKEN = '424242:RM-test-token';
 process.env.BOT_TOKEN = BOT_TOKEN;
 
@@ -305,7 +305,7 @@ test('a top-up is priced by the server in cents and sent to RM as a TNG web chec
   assert.equal(rm.badSignatures, 0, 'RM accepted our signature over the sorted body');
   assert.equal(rm.calls.find((c) => c.url.endsWith('/payment/online'))?.url, 'https://sb-open.revenuemonster.my/v3/payment/online');
   assert.equal(sent.type, 'WEB_PAYMENT', 'no device said: the QR page');
-  assert.deepEqual(sent.method, ['TNG_MY']);
+  assert.deepEqual(sent.method, ['TNG_MY', 'MASTERCARD_MY']); // no pick: RM's page offers both
   assert.equal(sent.layoutVersion, 'v4');
   assert.equal(sent.order.amount, 1990, 'RM 19.90 in cents');
   assert.equal(sent.order.currencyType, 'MYR');

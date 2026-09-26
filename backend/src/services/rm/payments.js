@@ -65,25 +65,45 @@ export const redirectUrl = (orderId, from = 'web') => (from === 'app'
   ? `${config.rm.returnAppUrl}?startapp=store_${orderId}`
   : `${config.rm.webReturnUrl}?order=${orderId}`);
 
+/** RM's code for card payments ("Card (Online)"); RM offers it on WEB_PAYMENT only. */
+export const CARD_METHOD = 'MASTERCARD_MY';
+
 /**
  * How RM shows the checkout. The page says which device it is on; that only
  * changes the checkout's layout, never the price, the coins or the account, so
- * it is safe to take from the client. Anything but 'mobile' gets the QR page.
+ * it is safe to take from the client. Only a phone paying without a card gets
+ * MOBILE_PAYMENT (it opens the TNG app); everything else RM's web page (a TNG QR
+ * on a computer, the card form anywhere).
  */
-export const checkoutType = (device) => (device === 'mobile' ? 'MOBILE_PAYMENT' : 'WEB_PAYMENT');
+export const checkoutType = (device, method = null) => (
+  device === 'mobile' && method !== CARD_METHOD ? 'MOBILE_PAYMENT' : 'WEB_PAYMENT');
+
+/**
+ * The methods to offer RM for this order: the one the player picked, when it is
+ * one we offer, else all of them (RM's page then lets them choose). null means
+ * the pick is not one we offer.
+ */
+export function methodsFor(method) {
+  if (method === undefined || method === null || method === '') return [...config.rm.webMethods];
+  return config.rm.webMethods.includes(method) ? [method] : null;
+}
 
 /**
  * Start an order and its RM checkout. Returns { status, ... }:
  *   created         { orderId, url, coins, myrSen }
  *   disabled        RM payments are switched off
  *   unknown_pack    no such pack, or it has no MYR price
+ *   unknown_method  a payment method we do not offer
  *   too_many_open | daily_limit
  *   provider_error  RM refused or did not answer; the order is marked failed
  */
-export async function createRmOrder(userId, packId, { device = null, from = 'web' } = {}) {
+export async function createRmOrder(userId, packId, { device = null, from = 'web', method = null } = {}) {
   if (!config.rm.enabled) return { status: 'disabled' };
   const pack = packFor(packId);
   if (!pack) return { status: 'unknown_pack' };
+  const methods = methodsFor(method);
+  if (!methods) return { status: 'unknown_method' };
+  const type = checkoutType(device, methods.length === 1 ? methods[0] : null);
   const limit = await orderLimitReason(userId, 'rm');
   if (limit) return { status: limit };
 
@@ -105,9 +125,9 @@ export async function createRmOrder(userId, packId, { device = null, from = 'web
   try {
     checkout = await rm().createCheckout({
       storeId: config.rm.storeId,
-      type: checkoutType(device),
+      type,
       layoutVersion: 'v4',
-      method: [...config.rm.webMethods],
+      method: methods,
       redirectUrl: redirectUrl(orderId, from),
       notifyUrl: notifyUrl(),
       order: {
@@ -135,7 +155,7 @@ export async function createRmOrder(userId, packId, { device = null, from = 'web
   });
   await logEvent({
     orderId, source: 'api', event: 'checkout', outcome: 'pending', payload: {
-      packId: pack.id, myrSen: pack.myrSen, type: checkoutType(device), from, live: config.rm.live,
+      packId: pack.id, myrSen: pack.myrSen, type, methods, from, live: config.rm.live,
     },
   });
   return {

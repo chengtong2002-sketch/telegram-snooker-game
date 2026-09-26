@@ -204,7 +204,7 @@ function paint() {
     el.list.replaceChildren(...data.packs.map(packRow));
     el.note.textContent = 'Coins buy cues and cue balls, and nothing else: they never affect matches or rewards. '
       + (data.rmEnabled
-        ? "Paid in ringgit with Touch 'n Go, on a secure payment page. Purchases are final; see /terms in the bot."
+        ? "Paid in ringgit with Touch 'n Go or a card, on Revenue Monster's secure payment page. Purchases are final; see /terms in the bot."
         : "Ringgit payments (Touch 'n Go) open soon.");
     return;
   }
@@ -275,7 +275,7 @@ function packRow(pack) {
   const pay = node('button', 'item-btn', pack.myrSen ? myr(pack.myrSen) : 'Soon');
   if (onSale) {
     pay.setAttribute('aria-label', `Buy ${fmt(pack.coins)} coins for ${myr(pack.myrSen)}`);
-    pay.onclick = () => buyPackRm(pack);
+    pay.onclick = () => choosePayMethod(pack);
   } else {
     // Looks off, but still answers a tap: a button that does nothing reads as broken.
     pay.classList.add('is-off');
@@ -447,12 +447,41 @@ async function buy(item) {
  * computer). RM sends them back to the Mini App (startapp=store_<orderId>), but
  * this screen already follows the order in case they just switch back instead.
  */
-async function buyPackRm(pack) {
+/** How each RM method is named to a player. */
+const PAY_METHOD_LABELS = { TNG_MY: "Touch 'n Go eWallet", MASTERCARD_MY: 'Credit / debit card' };
+
+/**
+ * Ask how to pay (TNG or card) when the server offers more than one way; with
+ * only one, go straight to it.
+ */
+function choosePayMethod(pack) {
+  const s = session;
+  if (!s || s.busy) return;
+  const methods = (s.data?.payMethods ?? []).filter((m) => PAY_METHOD_LABELS[m]);
+  if (methods.length <= 1) {
+    buyPackRm(pack, methods[0] ?? null);
+    return;
+  }
+  s.hud.modal({
+    title: `${fmt(pack.coins)} coins for ${myr(pack.myrSen)}`,
+    body: '<p>How would you like to pay?</p>',
+    actions: [
+      ...methods.map((m, i) => ({
+        label: PAY_METHOD_LABELS[m],
+        kind: i === 0 ? 'primary' : '',
+        onClick: () => { s.hud.closeModal(); buyPackRm(pack, m); },
+      })),
+      { label: 'Cancel', onClick: () => s.hud.closeModal() },
+    ],
+  });
+}
+
+async function buyPackRm(pack, method = null) {
   const s = session;
   if (!s || s.busy) return;
   s.busy = true;
   try {
-    const { orderId, url } = await api.rmOrder(pack.id, deviceKind());
+    const { orderId, url } = await api.rmOrder(pack.id, deviceKind(), method);
     if (s !== session) return;
     openExternal(url);
     watchOrder(s, orderId, url);

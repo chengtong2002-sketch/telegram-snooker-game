@@ -18,10 +18,11 @@ const rmOrderLimiter = rateLimit({
 });
 
 const ORDER_HTTP = {
-  created: 200, disabled: 503, unknown_pack: 404, too_many_open: 429, daily_limit: 429, provider_error: 502,
+  created: 200, disabled: 503, unknown_pack: 404, unknown_method: 400, too_many_open: 429, daily_limit: 429, provider_error: 502,
 };
 const RM_ERRORS = {
   unknown_pack: 'no such coin pack',
+  unknown_method: 'that payment method is not offered',
   daily_limit: 'that is the most coin orders for today',
   disabled: 'buying coins is not switched on yet',
   too_many_open: 'you have unpaid checkouts open; pay or wait for one to expire',
@@ -32,13 +33,14 @@ router.use(requireAuth);
 
 /**
  * A Revenue Monster checkout (MYR) for one pack. Only the pack id and the
- * device are read: the price is the server's, and the device only picks RM's
- * layout (TNG app on a phone, QR on a computer).
+ * device (and the chosen method) are read: the price is the server's; the device
+ * and method only pick RM's layout and which way to pay (TNG or card).
  */
 router.post('/rm/orders', rmOrderLimiter, async (req, res) => {
   const packId = typeof req.body?.packId === 'string' ? req.body.packId : null;
   const device = req.body?.device === 'mobile' ? 'mobile' : 'desktop';
-  const result = await createRmOrder(req.user.id, packId, { device, from: 'app' });
+  const method = typeof req.body?.method === 'string' ? req.body.method : null;
+  const result = await createRmOrder(req.user.id, packId, { device, from: 'app', method });
   const code = ORDER_HTTP[result.status] ?? 500;
   if (code !== 200) return res.status(code).json({ ...result, error: RM_ERRORS[result.status] });
   return res.json(result);

@@ -339,6 +339,36 @@ test("the store follows only the player's own Mini App orders; the web token can
   assert.equal((await call('/api/payments/rm/orders', { method: 'POST', body: { packId: 'coins-100' } })).status, 401);
 });
 
+test('TNG or card: the pick decides the method and the layout; no pick offers both; anything else is 400', async () => {
+  const p = await appPlayer();
+  const saved = config.rm.webMethods;
+  config.rm.webMethods = ['TNG_MY', 'MASTERCARD_MY'];
+  try {
+    const store = await call('/api/store', { token: p.appToken });
+    assert.deepEqual(store.body.payMethods, ['TNG_MY', 'MASTERCARD_MY']);
+    // A fresh player each time: a player may only hold a few unpaid checkouts.
+    const order = async (body) => {
+      const res = await appOrder(await appPlayer(), body);
+      assert.equal(res.status, 200, JSON.stringify(res.body));
+      return checkouts.get(res.body.orderId);
+    };
+    const tngPhone = await order({ packId: 'coins-100', device: 'mobile', method: 'TNG_MY' });
+    assert.deepEqual([tngPhone.method, tngPhone.type], [['TNG_MY'], 'MOBILE_PAYMENT']);
+    // RM offers cards on its web page only: a phone paying by card gets WEB_PAYMENT.
+    const cardPhone = await order({ packId: 'coins-100', device: 'mobile', method: 'MASTERCARD_MY' });
+    assert.deepEqual([cardPhone.method, cardPhone.type], [['MASTERCARD_MY'], 'WEB_PAYMENT']);
+    const cardPc = await order({ packId: 'coins-100', device: 'desktop', method: 'MASTERCARD_MY' });
+    assert.deepEqual([cardPc.method, cardPc.type], [['MASTERCARD_MY'], 'WEB_PAYMENT']);
+    const noPick = await order({ packId: 'coins-100', device: 'desktop' });
+    assert.deepEqual(noPick.method, ['TNG_MY', 'MASTERCARD_MY']);
+    for (const bad of ['FPX_MY', 'tng_my', 'TNG_MY,MASTERCARD_MY']) {
+      assert.equal((await appOrder(p, { packId: 'coins-100', device: 'mobile', method: bad })).status, 400, bad);
+    }
+  } finally {
+    config.rm.webMethods = saved;
+  }
+});
+
 test('with RM off the Mini App store says so and a checkout is 503', async () => {
   const p = await appPlayer();
   config.rm.enabled = false;

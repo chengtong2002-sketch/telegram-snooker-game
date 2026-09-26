@@ -140,7 +140,9 @@ export const buyItem = (itemId) => request('/store/buy', { method: 'POST', body:
 /** @param {'cue'|'ball'} kind */
 export const equipItem = (kind, itemId) => request('/store/equip', { method: 'POST', body: { kind, itemId } });
 
-/** A Revenue Monster checkout (MYR) for one coin pack: { orderId, url }. The server prices it. */
-export const rmOrder = (packId, device) => request('/payments/rm/orders', { method: 'POST', body: { packId, device } });
+/** A Revenue Monster checkout (MYR) for one coin pack, paid by `method` (TNG_MY / MASTERCARD_MY): { orderId, url }. The server prices it. */
+export const rmOrder = (packId, device, method = null) => request('/payments/rm/orders', {
+  method: 'POST', body: method ? { packId, device, method } : { packId, device },
+});
 /** One of this player's coin orders: { status, coins, balance, ... }. */
 export const paymentOrder = (orderId) => request(`/payments/orders/${encodeURIComponent(orderId)}`);

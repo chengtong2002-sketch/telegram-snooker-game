@@ -97,8 +97,9 @@ export const config = {
     // For a checkout started in the Mini App's store: back into the Mini App,
     // <this>?startapp=store_<orderId>. t.me/<bot> opens the bot's main Mini App.
     returnAppUrl: (process.env.RM_RETURN_APP_URL ?? 'https://t.me/snookerPlayBot').trim().replace(/\/+$/, ''),
-    // RM method codes offered at checkout (web page and Mini App), comma-separated. TNG only for now.
-    webMethods: (process.env.RM_WEB_METHODS ?? 'TNG_MY').split(',').map((s) => s.trim()).filter(Boolean),
+    // RM method codes offered at checkout (web page and Mini App), comma-separated:
+    // TNG_MY (Touch 'n Go eWallet) and MASTERCARD_MY (RM's "Card (Online)").
+    webMethods: (process.env.RM_WEB_METHODS ?? 'TNG_MY,MASTERCARD_MY').split(',').map((s) => s.trim()).filter(Boolean),
   },
 
   // Cue ball spin in PvP (practice always has it; it never reaches the server).

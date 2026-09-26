@@ -59,6 +59,7 @@ function stubApi(page, state) {
         items: [],
         packs: PACKS,
         rmEnabled: state.rmEnabled,
+        payMethods: state.payMethods,
       });
     }
     if (p === '/payments/rm/orders' && req.method() === 'POST') {
@@ -105,7 +106,7 @@ async function layoutProblems(page, scope) {
 }
 
 const newState = (over = {}) => ({
-  calls: [], orderBodies: [], balance: 0, rmEnabled: true, orderStatuses: ['pending'], ...over,
+  calls: [], orderBodies: [], balance: 0, rmEnabled: true, payMethods: ['TNG_MY'], orderStatuses: ['pending'], ...over,
 });
 
 const browser = await chromium.launch({ channel: 'chrome' });
@@ -138,7 +139,7 @@ try {
 
   await page.locator('#store .item-pack button', { hasText: 'RM 4.90' }).click();
   await page.locator('#overlay-title', { hasText: 'Waiting for your payment' }).waitFor();
-  check(JSON.stringify(state.orderBodies) === JSON.stringify([{ packId: 'coins-100', device: 'mobile' }]), `only the pack id and the device are sent: ${JSON.stringify(state.orderBodies)}`);
+  check(JSON.stringify(state.orderBodies) === JSON.stringify([{ packId: 'coins-100', device: 'mobile', method: 'TNG_MY' }]), `only TNG offered: no picker, and only the pack, device and method are sent: ${JSON.stringify(state.orderBodies)}`);
   const opened = await page.evaluate(() => window.__opened);
   check(opened.length === 1 && opened[0] === CHECKOUT, 'RM\'s checkout opens outside the Mini App');
   await page.screenshot({ path: shot('waiting-360') });
@@ -195,15 +196,21 @@ try {
   const page5 = await pc.newPage();
   page5.on('pageerror', (err) => check(false, `page error: ${err.message}`));
   await fakeTelegram(page5, 'tdesktop');
-  const state5 = newState();
+  const state5 = newState({ payMethods: ['TNG_MY', 'MASTERCARD_MY'] });
   await stubApi(page5, state5);
   await page5.goto(`${GAME}/`);
   await page5.locator('#lobby').waitFor({ state: 'visible' });
   await page5.locator('#lobby-coins').click();
   await page5.locator('#store .store-tab[data-tab="coins"]').click();
   await page5.locator('#store .item-pack button', { hasText: 'RM 4.90' }).click();
+  await page5.locator('#overlay-title', { hasText: '100 coins for RM 4.90' }).waitFor();
+  const choices = await page5.locator('#overlay-actions button').allInnerTexts();
+  check(JSON.stringify(choices) === JSON.stringify(["Touch 'n Go eWallet", 'Credit / debit card', 'Cancel']), `TNG or card is asked first: ${choices.join(' | ')}`);
+  check(state5.orderBodies.length === 0, 'no order until a way to pay is picked');
+  await page5.screenshot({ path: shot('choose-desktop') });
+  await page5.locator('#overlay-actions button', { hasText: 'Credit / debit card' }).click();
   await page5.locator('#overlay-title', { hasText: 'Waiting for your payment' }).waitFor();
-  check(state5.orderBodies[0]?.device === 'desktop', `Telegram Desktop asks for the QR page (${JSON.stringify(state5.orderBodies)})`);
+  check(JSON.stringify(state5.orderBodies) === JSON.stringify([{ packId: 'coins-100', device: 'desktop', method: 'MASTERCARD_MY' }]), `card picked: the order says so (${JSON.stringify(state5.orderBodies)})`);
   const links = await page5.evaluate(() => window.__links);
   check(links.length === 1 && links[0] === CHECKOUT, 'the checkout opens through Telegram openLink');
   await page5.screenshot({ path: shot('waiting-desktop') });
@@ -228,7 +235,7 @@ try {
   await page4.screenshot({ path: shot('android-320') });
   await page4.locator('#store .item-pack button', { hasText: 'RM 39.90' }).click();
   await page4.locator('#overlay-title', { hasText: 'Waiting for your payment' }).waitFor();
-  check(JSON.stringify(state4.orderBodies) === JSON.stringify([{ packId: 'coins-1200', device: 'mobile' }]), `Telegram on Android asks for the TNG app (${JSON.stringify(state4.orderBodies)})`);
+  check(JSON.stringify(state4.orderBodies) === JSON.stringify([{ packId: 'coins-1200', device: 'mobile', method: 'TNG_MY' }]), `Telegram on Android asks for the TNG app (${JSON.stringify(state4.orderBodies)})`);
   await both.close();
 
   /* ---------- switched off: ringgit prices shown, greyed out, nothing can be bought ---------- */

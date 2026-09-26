@@ -41,6 +41,7 @@ export async function storeView(userId) {
     })),
     packs: packsOnSale(),
     rmEnabled: config.rm.enabled,
+    payMethods: config.rm.enabled ? [...config.rm.webMethods] : [],
   };
 }
 

@@ -63,7 +63,7 @@ router.get('/me', requireTopupAuth, async (req, res) => {
 });
 
 const ORDER_HTTP = {
-  created: 200, disabled: 404, unknown_pack: 404, too_many_open: 429, daily_limit: 429, provider_error: 502,
+  created: 200, disabled: 404, unknown_pack: 404, unknown_method: 400, too_many_open: 429, daily_limit: 429, provider_error: 502,
 };
 const ORDER_ERRORS = {
   unknown_pack: 'no such coin pack',
